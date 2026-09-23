@@ -42,7 +42,14 @@ async function main() {
     },
     webhook,
   });
-  const server = app.listen(config.PORT, () => logger.info({ port: config.PORT }, "HTTP server (admin API)"));
+  // Express 5 listen xatosini (masalan, port band) callback'ga beradi
+  const server = app.listen(config.PORT, (err?: Error) => {
+    if (err) {
+      logger.fatal({ err, port: config.PORT }, "HTTP server ishga tushmadi (port band bo'lishi mumkin)");
+      process.exit(1);
+    }
+    logger.info({ port: config.PORT }, "HTTP server (admin API)");
+  });
 
   await resumeBroadcasts(bot.api);
 

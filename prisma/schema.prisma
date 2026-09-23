@@ -1,0 +1,330 @@
+// TZ v2.1, 10-bo'lim. Vaqtlar UTC da (timestamptz), pul summalari butun so'mda (Int).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductType {
+  channel
+  bundle
+}
+
+enum FilesMode {
+  auto
+  semi
+  manual
+}
+
+enum OrderStatus {
+  new
+  receipt_sent
+  rejected
+  approved
+  joined
+  expired
+  cancelled
+  refunded
+}
+
+enum PaymentMethod {
+  card
+  payme
+  click
+}
+
+enum ReceiptFileType {
+  photo
+  pdf
+  image
+}
+
+enum ReminderKind {
+  pay_1
+  pay_2
+  pay_3
+  video
+  upsell
+  join
+}
+
+enum AdminRole {
+  admin
+  superadmin
+}
+
+enum PromoKind {
+  amount
+  percent
+}
+
+enum MessageDirection {
+  incoming
+  outgoing
+}
+
+model User {
+  id           BigInt    @id @default(autoincrement())
+  telegramId   BigInt    @unique @map("telegram_id")
+  username     String?
+  firstName    String?   @map("first_name")
+  lastName     String?   @map("last_name")
+  phone        String?
+  isForeign    Boolean   @default(false) @map("is_foreign")
+  firstSource  String?   @map("first_source")
+  firstProduct String?   @map("first_product")
+  // Oxirgi START dagi mahsulot va manba — oqim davomida ishlatiladi
+  lastProduct  String?   @map("last_product")
+  lastSource   String?   @map("last_source")
+  isBlocked    Boolean   @default(false) @map("is_blocked")
+  referrerId   BigInt?   @map("referrer_id")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  lastSeenAt   DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+
+  orders    Order[]
+  grants    AccessGrant[]
+  reminders Reminder[]
+  events    Event[]
+  messages  Message[]
+
+  @@map("users")
+}
+
+model Product {
+  id             Int         @id @default(autoincrement())
+  code           String      @unique
+  title          String
+  description    String      @default("")
+  price          Int         @default(0)
+  oldPrice       Int?        @map("old_price")
+  videoFileId    String?     @map("video_file_id")
+  type           ProductType @default(channel)
+  channelId      BigInt?     @map("channel_id")
+  // type = bundle bo'lsa — tarkibidagi mahsulot kodlari
+  bundleCodes    String[]    @default([]) @map("bundle_codes")
+  filesMode      FilesMode   @default(auto) @map("files_mode")
+  fileMessageIds BigInt[]    @default([]) @map("file_message_ids")
+  accessDays     Int?        @map("access_days")
+  isActive       Boolean     @default(true) @map("is_active")
+  sortOrder      Int         @default(0) @map("sort_order")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  orders Order[]
+  grants AccessGrant[]
+  promos PromoCode[]
+
+  @@map("products")
+}
+
+model Order {
+  id            BigInt        @id @default(autoincrement())
+  userId        BigInt        @map("user_id")
+  productId     Int           @map("product_id")
+  amount        Int
+  discount      Int           @default(0)
+  promoId       Int?          @map("promo_id")
+  cardId        Int?          @map("card_id")
+  status        OrderStatus   @default(new)
+  attempts      Int           @default(0)
+  // BR-06: "Summa kam" bo'lganda yetishmayotgan summa
+  shortfall     Int?
+  reviewedById  Int?          @map("reviewed_by")
+  reviewedAt    DateTime?     @map("reviewed_at") @db.Timestamptz
+  rejectReason  String?       @map("reject_reason")
+  adminNote     String?       @map("admin_note")
+  expiresAt     DateTime      @map("expires_at") @db.Timestamptz
+  paidAt        DateTime?     @map("paid_at") @db.Timestamptz
+  source        String?
+  paymentMethod PaymentMethod @default(card) @map("payment_method")
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  user       User          @relation(fields: [userId], references: [id])
+  product    Product       @relation(fields: [productId], references: [id])
+  promo      PromoCode?    @relation(fields: [promoId], references: [id])
+  card       Card?         @relation(fields: [cardId], references: [id])
+  reviewedBy Admin?        @relation(fields: [reviewedById], references: [id])
+  receipts   Receipt[]
+  grants     AccessGrant[]
+  reminders  Reminder[]
+
+  @@index([userId, productId, status])
+  @@index([status, expiresAt])
+  @@map("orders")
+}
+
+model Receipt {
+  id             BigInt          @id @default(autoincrement())
+  orderId        BigInt          @map("order_id")
+  fileId         String          @map("file_id")
+  fileUniqueId   String          @map("file_unique_id")
+  fileType       ReceiptFileType @map("file_type")
+  isDuplicate    Boolean         @default(false) @map("is_duplicate")
+  adminChatId    BigInt?         @map("admin_chat_id")
+  adminMessageId BigInt?         @map("admin_message_id")
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([fileUniqueId])
+  @@index([orderId])
+  @@map("receipts")
+}
+
+model AccessGrant {
+  id            BigInt    @id @default(autoincrement())
+  userId        BigInt    @map("user_id")
+  productId     Int       @map("product_id")
+  orderId       BigInt    @map("order_id")
+  inviteLink    String?   @unique @map("invite_link")
+  linkExpiresAt DateTime? @map("link_expires_at") @db.Timestamptz
+  joinedAt      DateTime? @map("joined_at") @db.Timestamptz
+  expiresAt     DateTime? @map("expires_at") @db.Timestamptz
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz
+  filesSentAt   DateTime? @map("files_sent_at") @db.Timestamptz
+  // null = bot o'zi yuborgan
+  filesSentById Int?      @map("files_sent_by")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user        User    @relation(fields: [userId], references: [id])
+  product     Product @relation(fields: [productId], references: [id])
+  order       Order   @relation(fields: [orderId], references: [id])
+  filesSentBy Admin?  @relation(fields: [filesSentById], references: [id])
+
+  @@index([userId, productId])
+  @@map("access_grants")
+}
+
+model Reminder {
+  id          BigInt       @id @default(autoincrement())
+  userId      BigInt       @map("user_id")
+  orderId     BigInt?      @map("order_id")
+  kind        ReminderKind
+  sendAt      DateTime     @map("send_at") @db.Timestamptz
+  sentAt      DateTime?    @map("sent_at") @db.Timestamptz
+  cancelledAt DateTime?    @map("cancelled_at") @db.Timestamptz
+
+  user  User   @relation(fields: [userId], references: [id])
+  order Order? @relation(fields: [orderId], references: [id])
+
+  @@index([userId, sentAt, cancelledAt])
+  @@map("reminders")
+}
+
+model Card {
+  id           Int       @id @default(autoincrement())
+  // To'liq raqam faqat shu jadvalda saqlanadi
+  number       String
+  numberMasked String    @map("number_masked")
+  holder       String
+  bank         String?
+  monthlyLimit Int?      @map("monthly_limit")
+  isActive     Boolean   @default(true) @map("is_active")
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  lastUsedAt   DateTime? @map("last_used_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  orders Order[]
+
+  @@map("cards")
+}
+
+model PromoCode {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique
+  kind       PromoKind
+  value      Int
+  productId  Int?      @map("product_id")
+  maxUses    Int?      @map("max_uses")
+  used       Int       @default(0)
+  validUntil DateTime? @map("valid_until") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  product Product? @relation(fields: [productId], references: [id])
+  orders  Order[]
+
+  @@map("promo_codes")
+}
+
+model Admin {
+  id         Int       @id @default(autoincrement())
+  telegramId BigInt    @unique @map("telegram_id")
+  name       String?
+  role       AdminRole @default(admin)
+  isActive   Boolean   @default(true) @map("is_active")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  reviewedOrders Order[]
+  filesSent      AccessGrant[]
+  messages       Message[]
+  auditLogs      AuditLog[]
+
+  @@map("admins")
+}
+
+model Setting {
+  key   String @id
+  value Json
+
+  @@map("settings")
+}
+
+model Text {
+  key  String
+  lang String @default("uz")
+  body String
+
+  @@id([key, lang])
+  @@map("texts")
+}
+
+model Event {
+  id        BigInt   @id @default(autoincrement())
+  userId    BigInt?  @map("user_id")
+  name      String
+  payload   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([name, createdAt])
+  @@index([userId, name])
+  @@map("events")
+}
+
+model Message {
+  id             BigInt           @id @default(autoincrement())
+  userId         BigInt           @map("user_id")
+  direction      MessageDirection
+  text           String?
+  adminId        Int?             @map("admin_id")
+  adminMessageId BigInt?          @map("admin_message_id")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  user  User   @relation(fields: [userId], references: [id])
+  admin Admin? @relation(fields: [adminId], references: [id])
+
+  @@index([adminMessageId])
+  @@map("messages")
+}
+
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  adminId   Int?     @map("admin_id")
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  before    Json?
+  after     Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  admin Admin? @relation(fields: [adminId], references: [id])
+
+  @@index([entity, entityId])
+  @@map("audit_log")
+}

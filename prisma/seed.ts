@@ -1,4 +1,5 @@
 // Boshlang'ich mahsulotlar (TZ 3.1). Narx, kanal va video keyin admin paneldan kiritiladi.
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();

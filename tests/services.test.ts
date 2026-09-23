@@ -64,7 +64,7 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
     if (r.kind !== "created") throw new Error();
     for (let i = 1; i <= 3; i++) {
       expect((await attachReceipt(r.order.id, file(`u${i}`))).kind).toBe("ok");
-      expect(await rejectOrder(r.order.id, 1, "Chek o'qilmaydi", null)).toBe(true);
+      expect(await rejectOrder(r.order.id, { adminId: 1 }, "Chek o'qilmaydi", null)).toBe(true);
     }
     expect((await attachReceipt(r.order.id, file("u4"))).kind).toBe("max_attempts");
   });
@@ -85,7 +85,7 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
     const r = await createOrder(u.id, await product("4b"), null);
     if (r.kind !== "created") throw new Error();
     await attachReceipt(r.order.id, file("x"));
-    const [a, b] = await Promise.all([approveOrder(r.order.id, 1), approveOrder(r.order.id, 2)]);
+    const [a, b] = await Promise.all([approveOrder(r.order.id, { adminId: 1 }), approveOrder(r.order.id, { adminId: 2 })]);
     expect([a, b].filter(Boolean)).toHaveLength(1);
   });
 
@@ -95,7 +95,7 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
     const r = await createOrder(u.id, p, null);
     if (r.kind !== "created") throw new Error();
     await attachReceipt(r.order.id, file("y"));
-    await approveOrder(r.order.id, 1);
+    await approveOrder(r.order.id, { adminId: 1 });
     const [grant] = await grantAccess(fakeApi, r.order, u.telegramId);
     expect(grant.inviteLink).toBeTruthy();
 
@@ -129,7 +129,7 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
     const r = await createOrder(u.id, await product("bundle"), null);
     if (r.kind !== "created") throw new Error();
     await attachReceipt(r.order.id, file("b"));
-    await approveOrder(r.order.id, 1);
+    await approveOrder(r.order.id, { adminId: 1 });
     const grants = await grantAccess(fakeApi, r.order, u.telegramId);
     expect(grants.map((g) => g.product.code)).toEqual(["4b", "qd"]);
   });

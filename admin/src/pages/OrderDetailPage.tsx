@@ -1,44 +1,12 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, FileText } from "lucide-react";
-import { api, errorMessage } from "../lib/api";
+import { AlertTriangle, ArrowLeft } from "lucide-react";
+import { api } from "../lib/api";
 import { fmtDateTime, fmtSum, fullName, ORDER_STATUS } from "../lib/format";
 import type { OrderDetail } from "../lib/types";
 import { useAsync } from "../hooks/useAsync";
-import { AsyncView, Badge, Card, CardHeader, PageHeader, Spinner } from "../components/ui";
-
-/** Chek fayli JWT bilan yuklanadi (img src sarlavha yubora olmaydi) */
-function ReceiptFile({ orderId, receiptId, type }: { orderId: string; receiptId: string; type: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    let objectUrl: string | null = null;
-    api
-      .get<Blob>(`/orders/${orderId}/receipts/${receiptId}/file`, { responseType: "blob" })
-      .then((r) => {
-        objectUrl = URL.createObjectURL(r.data);
-        setUrl(objectUrl);
-      })
-      .catch((e: unknown) => setError(errorMessage(e)));
-    return () => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [orderId, receiptId]);
-
-  if (error) return <p className="text-sm text-red-600">{error}</p>;
-  if (!url) return <Spinner label="Chek yuklanmoqda…" />;
-  if (type === "pdf")
-    return (
-      <a href={url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-blue-600 hover:underline">
-        <FileText className="h-4 w-4" /> PDF chekni ochish
-      </a>
-    );
-  return (
-    <a href={url} target="_blank" rel="noreferrer">
-      <img src={url} alt="To'lov cheki" className="max-h-[480px] rounded-lg border border-gray-200 object-contain" />
-    </a>
-  );
-}
+import { AsyncView, Badge, Card, CardHeader, PageHeader } from "../components/ui";
+import { ReceiptFile } from "../components/ReceiptFile";
+import { ReviewActions } from "../components/ReviewActions";
 
 export default function OrderDetailPage() {
   const { id = "" } = useParams();
@@ -71,7 +39,7 @@ export default function OrderDetailPage() {
                     ["Ochilgan", fmtDateTime(o.createdAt)],
                     ["Muddat", fmtDateTime(o.expiresAt)],
                     ["To'langan", fmtDateTime(o.paidAt)],
-                    ["Ko'rib chiqqan", o.reviewedBy?.name ? `${o.reviewedBy.name}, ${fmtDateTime(o.reviewedAt)}` : "—"],
+                    ["Ko'rib chiqqan", o.reviewedByPanel || o.reviewedBy?.name ? `${o.reviewedByPanel ? `${o.reviewedByPanel.name} (panel)` : o.reviewedBy?.name}, ${fmtDateTime(o.reviewedAt)}` : "—"],
                     ["Rad etish sababi", o.rejectReason ?? "—"],
                   ].map(([k, v]) => (
                     <div key={String(k)} className="flex justify-between gap-4">
@@ -82,7 +50,11 @@ export default function OrderDetailPage() {
                 </dl>
               </Card>
               <Card className="lg:col-span-2">
-                <CardHeader title="Cheklar" subtitle={o.receipts.length ? `${o.receipts.length} ta` : undefined} />
+                <CardHeader
+                  title="Cheklar"
+                  subtitle={o.receipts.length ? `${o.receipts.length} ta` : undefined}
+                  action={o.status === "receipt_sent" ? <ReviewActions orderId={o.id} amount={o.amount} onDone={order.reload} /> : undefined}
+                />
                 <div className="space-y-6 p-5">
                   {o.receipts.length === 0 && <p className="text-sm text-gray-500">Chek yuborilmagan</p>}
                   {o.receipts.map((r, i) => (

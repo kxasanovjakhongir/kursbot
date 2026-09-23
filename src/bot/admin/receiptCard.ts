@@ -48,10 +48,11 @@ export async function buildReceiptCaption(orderId: bigint, flags: CardFlags = {}
     `Urinish: ${order.attempts} / ${settings.max_receipt_attempts}`,
   ];
 
+  const reviewer = escapeHtml(order.reviewedByPanel ? `${order.reviewedByPanel.name} (panel)` : (order.reviewedBy?.name ?? "admin"));
   if (order.status === "approved" || order.status === "joined") {
-    lines.push("", `✅ <b>Tasdiqlandi</b>: ${escapeHtml(order.reviewedBy?.name ?? "admin")}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
+    lines.push("", `✅ <b>Tasdiqlandi</b>: ${reviewer}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
   } else if (order.status === "rejected") {
-    lines.push("", `❌ <b>Rad etildi</b>: ${escapeHtml(order.rejectReason ?? "")} — ${escapeHtml(order.reviewedBy?.name ?? "admin")}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
+    lines.push("", `❌ <b>Rad etildi</b>: ${escapeHtml(order.rejectReason ?? "")} — ${reviewer}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
   } else if (order.status !== "receipt_sent") {
     lines.push("", `ℹ️ Holat: ${order.status}`);
   }

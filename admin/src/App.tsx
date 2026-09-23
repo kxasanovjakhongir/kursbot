@@ -1,6 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
+import { PendingProvider } from "./context/PendingContext";
 import { Layout } from "./components/Layout";
 import { RequireAuth, RequireSuper } from "./components/guards";
 import LoginPage from "./pages/LoginPage";
@@ -20,6 +21,9 @@ import ActivityLogsPage from "./pages/ActivityLogsPage";
 import BotSettingsPage from "./pages/BotSettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
+import ReceiptsPage from "./pages/ReceiptsPage";
+import ProductsPage from "./pages/ProductsPage";
+import CardsPage from "./pages/CardsPage";
 
 export default function App() {
   return (
@@ -31,7 +35,9 @@ export default function App() {
             <Route
               element={
                 <RequireAuth>
-                  <Layout />
+                  <PendingProvider>
+                    <Layout />
+                  </PendingProvider>
                 </RequireAuth>
               }
             >
@@ -39,6 +45,9 @@ export default function App() {
               <Route path="telegram-users" element={<TelegramUsersPage />} />
               <Route path="telegram-users/:id" element={<TelegramUserDetailPage />} />
               <Route path="messages" element={<MessagesPage />} />
+              <Route path="receipts" element={<ReceiptsPage />} />
+              <Route path="products" element={<RequireSuper><ProductsPage /></RequireSuper>} />
+              <Route path="cards" element={<RequireSuper><CardsPage /></RequireSuper>} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="orders/:id" element={<OrderDetailPage />} />
               <Route path="broadcast" element={<BroadcastPage />} />

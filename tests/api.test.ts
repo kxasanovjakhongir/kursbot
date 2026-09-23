@@ -18,6 +18,9 @@ const fakeApi = {
     return { message_id: sent.length, chat: { id: chatId } };
   },
   setMyCommands: async () => true,
+  createChatInviteLink: async () => ({ invite_link: `https://t.me/+panel${sent.length}` }),
+  editMessageCaption: async () => true,
+  editMessageText: async () => true,
 } as unknown as Api;
 
 describe.skipIf(!enabled)("admin API", () => {
@@ -27,7 +30,7 @@ describe.skipIf(!enabled)("admin API", () => {
 
   beforeAll(async () => {
     await prisma.$executeRawUnsafe(
-      `TRUNCATE activity_logs, broadcast_recipients, broadcasts, panel_users, bot_commands, bot_menu, messages, users RESTART IDENTITY CASCADE`,
+      `TRUNCATE activity_logs, broadcast_recipients, broadcasts, panel_users, bot_commands, bot_menu, messages, receipts, access_grants, orders, cards, products, users RESTART IDENTITY CASCADE`,
     );
     await createPanelUser({ email: "super@test.uz", name: "Super", password: "superpass1", role: "superadmin" });
     await createPanelUser({ email: "admin@test.uz", name: "Admin", password: "adminpass1", role: "admin" });
@@ -114,5 +117,52 @@ describe.skipIf(!enabled)("admin API", () => {
     const logs = await request(app).get("/api/activity-logs").set(auth);
     const actions = logs.body.items.map((l: { action: string }) => l.action);
     expect(actions).toEqual(expect.arrayContaining(["LOGIN", "LOGIN_FAILED", "CREATE_BROADCAST"]));
+  });
+
+  it("chekni paneldan tasdiqlash: mijozga link, ikkinchi marta — 409", async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const product = await prisma.product.create({ data: { code: "4b", title: "4 bosqichli", price: 1000, channelId: -1001n } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { telegramId: 1001n } });
+    const order = await prisma.order.create({
+      data: { userId: user.id, productId: product.id, amount: 1000, status: "receipt_sent", attempts: 1, expiresAt: new Date(Date.now() + 3600_000) },
+    });
+    const before = sent.length;
+    const res = await request(app).post(`/api/orders/${order.id}/approve`).set(auth);
+    expect(res.status).toBe(200);
+    const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(saved.status).toBe("approved");
+    expect(saved.reviewedByPanelId).toBe(2);
+    expect(sent.slice(before)).toEqual([1001]);
+    expect(await prisma.accessGrant.count({ where: { orderId: order.id } })).toBe(1);
+    expect((await request(app).post(`/api/orders/${order.id}/approve`).set(auth)).status).toBe(409);
+  });
+
+  it("chekni paneldan rad etish: 'Summa kam' summasiz — 400, summa bilan — rejected", async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const product = await prisma.product.findUniqueOrThrow({ where: { code: "4b" } });
+    const user = await prisma.user.findUniqueOrThrow({ where: { telegramId: 1002n } });
+    await prisma.user.update({ where: { id: user.id }, data: { isBlocked: false } });
+    const order = await prisma.order.create({
+      data: { userId: user.id, productId: product.id, amount: 1000, status: "receipt_sent", attempts: 1, expiresAt: new Date(Date.now() + 3600_000) },
+    });
+    expect((await request(app).post(`/api/orders/${order.id}/reject`).set(auth).send({ reason: "short" })).status).toBe(400);
+    const res = await request(app).post(`/api/orders/${order.id}/reject`).set(auth).send({ reason: "short", amount: 300 });
+    expect(res.status).toBe(200);
+    const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id } });
+    expect(saved).toMatchObject({ status: "rejected", shortfall: 300 });
+    const count = await request(app).get("/api/orders/pending-count").set(auth);
+    expect(count.body.count).toBe(0);
+  });
+
+  it("kartalar va mahsulotlar — faqat SUPER_ADMIN; karta raqami tekshiriladi", async () => {
+    expect((await request(app).get("/api/cards").set({ Authorization: `Bearer ${adminToken}` })).status).toBe(403);
+    const auth = { Authorization: `Bearer ${superToken}` };
+    expect((await request(app).post("/api/cards").set(auth).send({ number: "1234", holder: "Test" })).status).toBe(400);
+    const card = await request(app).post("/api/cards").set(auth).send({ number: "8600 1234 5678 9012", holder: "Aziz Karimov" });
+    expect(card.status).toBe(201);
+    expect(card.body.numberMasked).toBe("8600 **** **** 9012");
+    const product = await prisma.product.findUniqueOrThrow({ where: { code: "4b" } });
+    const upd = await request(app).put(`/api/products/${product.id}`).set(auth).send({ price: 1250000, description: "Yangi" });
+    expect(upd.body.price).toBe(1250000);
   });
 });

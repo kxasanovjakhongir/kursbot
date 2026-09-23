@@ -4,6 +4,9 @@ import {
   Bot,
   ChevronsLeft,
   ChevronsRight,
+  CreditCard,
+  Package,
+  Receipt,
   History,
   LayoutDashboard,
   ListOrdered,
@@ -22,20 +25,25 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { usePending } from "../context/PendingContext";
 
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
   superOnly?: boolean;
+  badge?: "pending";
 }
 
 // Ruxsati yo'q bo'limlar menyuda ko'rinmaydi (backend ham alohida tekshiradi)
 const NAV: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/telegram-users", label: "Telegram foydalanuvchilar", icon: Users },
-  { to: "/messages", label: "Xabarlar", icon: MessageSquare },
+  { to: "/receipts", label: "Cheklar", icon: Receipt, badge: "pending" },
   { to: "/orders", label: "Buyurtmalar", icon: ShoppingCart },
+  { to: "/products", label: "Mahsulotlar", icon: Package, superOnly: true },
+  { to: "/cards", label: "To'lov kartalari", icon: CreditCard, superOnly: true },
+  { to: "/messages", label: "Xabarlar", icon: MessageSquare },
   { to: "/broadcast", label: "Broadcast", icon: Megaphone },
   { to: "/broadcast/history", label: "Broadcast tarixi", icon: History },
   { to: "/bot/commands", label: "Bot buyruqlari", icon: SquareTerminal },
@@ -48,6 +56,7 @@ const NAV: NavItem[] = [
 
 function NavList({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
   const { isSuper, logout } = useAuth();
+  const { count } = usePending();
   const items = NAV.filter((i) => !i.superOnly || isSuper);
   const cls = ({ isActive }: { isActive: boolean }) =>
     `group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
@@ -57,8 +66,14 @@ function NavList({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: (
     <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-4">
       {items.map((i) => (
         <NavLink key={i.to} to={i.to} end={i.to === "/" || i.to === "/broadcast"} className={cls} onClick={onNavigate} title={collapsed ? i.label : undefined}>
-          <i.icon className="h-5 w-5 shrink-0" />
-          {!collapsed && <span className="truncate">{i.label}</span>}
+          <span className="relative">
+            <i.icon className="h-5 w-5 shrink-0" />
+            {i.badge && count > 0 && collapsed && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-red-500" />}
+          </span>
+          {!collapsed && <span className="flex-1 truncate">{i.label}</span>}
+          {!collapsed && i.badge && count > 0 && (
+            <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold tabular-nums text-white">{count}</span>
+          )}
         </NavLink>
       ))}
       <button

@@ -22,6 +22,13 @@ export const ACTIONS = [
   "UPDATE_MENU_ITEM",
   "DELETE_MENU_ITEM",
   "REORDER_MENU",
+  "UPDATE_PRODUCT",
+  "UPLOAD_VIDEO",
+  "CREATE_CARD",
+  "UPDATE_CARD",
+  "DELETE_CARD",
+  "APPROVE_ORDER",
+  "REJECT_ORDER",
 ] as const;
 
 export type ActivityAction = (typeof ACTIONS)[number];

@@ -167,6 +167,8 @@ model Order {
   // BR-06: "Summa kam" bo'lganda yetishmayotgan summa
   shortfall     Int?
   reviewedById  Int?          @map("reviewed_by")
+  // Admin paneldan tasdiqlangan/rad etilgan bo'lsa
+  reviewedByPanelId Int?      @map("reviewed_by_panel_user_id")
   reviewedAt    DateTime?     @map("reviewed_at") @db.Timestamptz
   rejectReason  String?       @map("reject_reason")
   adminNote     String?       @map("admin_note")
@@ -182,6 +184,7 @@ model Order {
   promo      PromoCode?    @relation(fields: [promoId], references: [id])
   card       Card?         @relation(fields: [cardId], references: [id])
   reviewedBy Admin?        @relation(fields: [reviewedById], references: [id])
+  reviewedByPanel PanelUser? @relation(fields: [reviewedByPanelId], references: [id], onDelete: SetNull)
   receipts   Receipt[]
   grants     AccessGrant[]
   reminders  Reminder[]
@@ -380,8 +383,9 @@ model PanelUser {
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  broadcasts   Broadcast[]
-  activityLogs ActivityLog[]
+  broadcasts     Broadcast[]
+  activityLogs   ActivityLog[]
+  reviewedOrders Order[]
 
   @@map("panel_users")
 }

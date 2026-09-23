@@ -20,6 +20,8 @@ import { broadcastRouter } from "./routes/broadcast";
 import { adminsRouter } from "./routes/admins";
 import { activityRouter } from "./routes/activity";
 import { ordersRouter } from "./routes/orders";
+import { productsRouter } from "./routes/products";
+import { cardsRouter } from "./routes/cards";
 
 export interface AppOptions {
   runtime: BotRuntime;
@@ -73,6 +75,9 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   api.use("/messages", messagesRouter);
   api.use("/broadcast", broadcastRouter(runtime));
   api.use("/orders", ordersRouter(runtime));
+  // Narx, video, kanal va kartalar — faqat SUPER_ADMIN (TZ 2.2)
+  api.use("/products", requireSuperAdmin, productsRouter(runtime));
+  api.use("/cards", requireSuperAdmin, cardsRouter);
   api.use("/admins", requireSuperAdmin, adminsRouter);
   api.use("/activity-logs", requireSuperAdmin, activityRouter);
   api.use(notFound);

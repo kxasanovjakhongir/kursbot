@@ -174,6 +174,51 @@ export interface Order {
 export interface OrderDetail extends Order {
   reviewedAt: string | null;
   reviewedBy: { name: string | null } | null;
+  reviewedByPanel: { name: string } | null;
   card: { numberMasked: string; holder: string } | null;
   receipts: { id: string; fileType: "photo" | "pdf" | "image"; isDuplicate: boolean; createdAt: string }[];
+}
+
+export interface Product {
+  id: number;
+  code: string;
+  title: string;
+  description: string;
+  price: number;
+  oldPrice: number | null;
+  videoFileId: string | null;
+  type: "channel" | "bundle";
+  channelId: string | null;
+  bundleCodes: string[];
+  isActive: boolean;
+}
+
+export interface PaymentCard {
+  id: number;
+  number: string;
+  numberMasked: string;
+  holder: string;
+  bank: string | null;
+  monthlyLimit: number | null;
+  isActive: boolean;
+  revenue30d: number;
+  orders30d: number;
+}
+
+export interface ReceiptRef {
+  id: string;
+  fileType: "photo" | "pdf" | "image";
+  isDuplicate: boolean;
+  createdAt: string;
+}
+
+export interface PendingOrder extends Order {
+  card: { numberMasked: string; holder: string } | null;
+  receipts: ReceiptRef[];
+}
+
+export interface RejectReason {
+  code: string;
+  label: string;
+  needsInput: boolean;
 }

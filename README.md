@@ -36,6 +36,8 @@ tests/              unit + integratsion (servislar, API)
 | Imkoniyat | ADMIN | SUPER_ADMIN |
 |---|:-:|:-:|
 | Dashboard, Telegram foydalanuvchilar, xabarlar, buyurtmalar | ✅ | ✅ |
+| Cheklarni tasdiqlash / rad etish (panel yoki Telegram) | ✅ | ✅ |
+| Mahsulotlar (narx, tavsif, kanal, tanishtiruv videosi), to'lov kartalari | — | ✅ |
 | Broadcast va tarixi | ✅ | ✅ |
 | Bot buyruqlari va menyusi | ✅ | ✅ |
 | Adminlar, faoliyat loglari | — | ✅ |
@@ -173,7 +175,10 @@ Barcha marshrutlar `/api` ostida. `auth/login` dan tashqari hammasi `Authorizati
 | GET | `/telegram-users`, `/telegram-users/:id`, `/telegram-users/:id/messages` | hammasi |
 | GET | `/messages` | hammasi |
 | POST, GET | `/broadcast` · GET `/broadcast/:id`, `/broadcast/recipients-count` | hammasi |
-| GET | `/orders`, `/orders/:id`, `/orders/:id/receipts/:rid/file` | hammasi |
+| GET | `/orders`, `/orders/:id`, `/orders/:id/receipts/:rid/file`, `/orders/pending-count` | hammasi |
+| POST | `/orders/:id/approve`, `/orders/:id/reject` | hammasi |
+| GET, PUT | `/products[/:id]` · POST, GET, DELETE `/products/:id/video` | SUPER_ADMIN |
+| GET, POST, PUT, DELETE | `/cards[/:id]` | SUPER_ADMIN |
 | GET, POST, PUT, DELETE | `/admins[/:id]` | SUPER_ADMIN |
 | GET | `/activity-logs` | SUPER_ADMIN |
 

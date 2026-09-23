@@ -160,11 +160,18 @@ export async function setReceiptAdminMessage(receiptId: bigint, chatId: bigint, 
   });
 }
 
+/** Kim ko'rib chiqdi: Telegram admini yoki admin panel foydalanuvchisi */
+export interface ReviewerRef {
+  adminId?: number | null;
+  panelUserId?: number | null;
+}
+
 /** Admin tasdiqlashi — faqat receipt_sent holatidagi buyurtma (BR-12) */
-export async function approveOrder(orderId: bigint, adminId: number): Promise<boolean> {
+export async function approveOrder(orderId: bigint, reviewer: ReviewerRef): Promise<boolean> {
   const now = new Date();
   return transition(orderId, ["receipt_sent"], "approved", {
-    reviewedById: adminId,
+    reviewedById: reviewer.adminId ?? null,
+    reviewedByPanelId: reviewer.panelUserId ?? null,
     reviewedAt: now,
     paidAt: now,
     rejectReason: null,
@@ -173,12 +180,13 @@ export async function approveOrder(orderId: bigint, adminId: number): Promise<bo
 
 export async function rejectOrder(
   orderId: bigint,
-  adminId: number,
+  reviewer: ReviewerRef,
   reason: string,
   shortfall: number | null,
 ): Promise<boolean> {
   return transition(orderId, ["receipt_sent"], "rejected", {
-    reviewedById: adminId,
+    reviewedById: reviewer.adminId ?? null,
+    reviewedByPanelId: reviewer.panelUserId ?? null,
     reviewedAt: new Date(),
     rejectReason: reason,
     shortfall,
@@ -192,7 +200,7 @@ export async function markJoined(orderId: bigint): Promise<boolean> {
 export async function getOrderFull(orderId: bigint) {
   return prisma.order.findUnique({
     where: { id: orderId },
-    include: { user: true, product: true, card: true, promo: true, reviewedBy: true },
+    include: { user: true, product: true, card: true, promo: true, reviewedBy: true, reviewedByPanel: { select: { name: true } } },
   });
 }
 

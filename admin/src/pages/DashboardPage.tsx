@@ -102,7 +102,7 @@ export default function DashboardPage() {
               <section>
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">Savdo</h2>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <Link to="/orders?status=receipt_sent">
+                  <Link to="/receipts">
                     <Stat label="Tekshiruvdagi cheklar" value={fmtNumber(s.sales.pendingReceipts)} icon={Receipt} tone={s.sales.pendingReceipts > 0 ? "amber" : "green"} />
                   </Link>
                   <Stat label="Bugungi buyurtmalar" value={fmtNumber(s.sales.ordersToday)} icon={Receipt} />

@@ -76,3 +76,10 @@ export function formatPhone(phone: string | null | undefined): string {
   const m = phone.match(/^\+998(\d{2})(\d{3})(\d{2})(\d{2})$/);
   return m ? `+998 ${m[1]} ${m[2]} ${m[3]} ${m[4]}` : phone;
 }
+
+/** Toshkent vaqti bo'yicha kun boshi (UTC Date sifatida) */
+export function startOfTashkentDay(date: Date = new Date()): Date {
+  const shifted = new Date(date.getTime() + TASHKENT_OFFSET_MIN * 60_000);
+  shifted.setUTCHours(0, 0, 0, 0);
+  return new Date(shifted.getTime() - TASHKENT_OFFSET_MIN * 60_000);
+}

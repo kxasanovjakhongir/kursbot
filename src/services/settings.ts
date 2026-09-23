@@ -10,6 +10,12 @@ export const DEFAULT_SETTINGS = {
   invite_link_days: 7,
   receipt_max_mb: 10,
   admin_group_id: null as string | null,
+  // Admin panel sozlamalari
+  welcome_message: null as string | null,
+  maintenance_mode: false,
+  default_language: "uz",
+  // Bot tokeni (AES-256-GCM bilan shifrlangan). null bo'lsa .env dagi token ishlatiladi
+  bot_token_enc: null as string | null,
 };
 
 export type Settings = typeof DEFAULT_SETTINGS;

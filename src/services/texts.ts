@@ -51,6 +51,7 @@ export const DEFAULT_TEXTS = {
   purchases_header: "<b>Mening xaridlarim</b>",
   link_refreshed: "Yangi link tayyor. Link faqat siz uchun.",
   no_products: "Hozircha sotuvda darsliklar yo'q.",
+  maintenance: "Tizim vaqtincha texnik xizmatda. Iltimos, keyinroq urinib ko'ring.",
 } as const;
 
 export type TextKey = keyof typeof DEFAULT_TEXTS;

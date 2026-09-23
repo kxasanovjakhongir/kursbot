@@ -3,3 +3,6 @@ dist
 .env
 .git
 tests
+admin/node_modules
+admin/dist
+.pgdata

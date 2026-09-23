@@ -1,6 +1,5 @@
 import { Bot } from "grammy";
 import type { BotContext } from "./context";
-import { config } from "../config";
 import { logger } from "../lib/logger";
 import { getAdmin } from "../services/admins";
 import { upsertUser } from "../services/users";
@@ -14,9 +13,13 @@ import { mainMenu, phoneKeyboard } from "./keyboards";
 import { alertTech, isBlockedError } from "./notify";
 import { t } from "../services/texts";
 import { listOpenOrders } from "../services/orders";
+import { getSettings } from "../services/settings";
+import { dynamicCommands } from "./handlers/dynamicCommands";
+import { installOutgoingLogger, logIncoming } from "./messageLog";
 
-export function createBot(): Bot<BotContext> {
-  const bot = new Bot<BotContext>(config.BOT_TOKEN);
+export function createBot(token: string): Bot<BotContext> {
+  const bot = new Bot<BotContext>(token);
+  installOutgoingLogger(bot.api);
 
   // Foydalanuvchi va admin huquqi — har bir update da qayta aniqlanadi
   bot.use(async (ctx, next) => {
@@ -32,12 +35,28 @@ export function createBot(): Bot<BotContext> {
     await next();
   });
 
+  // Xabarlar tarixi (admin panel: Message History)
+  bot.on("message", async (ctx, next) => {
+    await logIncoming(ctx.message);
+    await next();
+  });
+
+  // Maintenance: oddiy foydalanuvchilarga xabar, adminlar ishlashda davom etadi
+  bot.use(async (ctx, next) => {
+    if (ctx.admin || ctx.chat?.type !== "private") return next();
+    const { maintenance_mode } = await getSettings();
+    if (!maintenance_mode) return next();
+    if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => undefined);
+    await ctx.reply(await t("maintenance"));
+  });
+
   // Tartib muhim: admin buyruqlari va tugmalari mijoz oqimidan oldin
   bot.use(adminCommands);
   bot.use(review);
   bot.use(joinRequest);
   bot.use(customer);
   bot.use(receipt);
+  bot.use(dynamicCommands);
 
   // Qolgan matnlar (shaxsiy chat)
   bot.chatType("private").on("message:text", async (ctx) => {

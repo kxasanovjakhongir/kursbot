@@ -11,6 +11,7 @@ import { createOrder, expireStaleOrders, listOpenOrders } from "../../services/o
 import { listUserGrants, refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
 import { DEFAULT_TEXTS as T, t } from "../../services/texts";
+import { getSettings } from "../../services/settings";
 import { prisma } from "../../db";
 import { config } from "../../config";
 
@@ -126,7 +127,9 @@ pm.command("start", async (ctx) => {
       await askPhone(ctx, null);
       return;
     }
-    await ctx.reply("👋", { reply_markup: mainMenu() });
+    // Admin paneldagi "Welcome Message" sozlamasi
+    const { welcome_message } = await getSettings();
+    await ctx.reply(welcome_message?.trim() || "👋", { reply_markup: mainMenu() });
     await showProductList(ctx);
     return;
   }

@@ -67,12 +67,42 @@ enum MessageDirection {
   outgoing
 }
 
+enum MessageType {
+  text
+  photo
+  video
+  document
+  other
+}
+
+enum BroadcastAudience {
+  all
+  active
+  specific
+}
+
+enum BroadcastStatus {
+  pending
+  sending
+  completed
+  failed
+}
+
+enum RecipientStatus {
+  pending
+  sent
+  failed
+  skipped
+}
+
 model User {
   id           BigInt    @id @default(autoincrement())
   telegramId   BigInt    @unique @map("telegram_id")
   username     String?
   firstName    String?   @map("first_name")
   lastName     String?   @map("last_name")
+  languageCode String?   @map("language_code")
+  isBot        Boolean   @default(false) @map("is_bot")
   phone        String?
   isForeign    Boolean   @default(false) @map("is_foreign")
   firstSource  String?   @map("first_source")
@@ -90,7 +120,10 @@ model User {
   reminders Reminder[]
   events    Event[]
   messages  Message[]
+  broadcastRecipients BroadcastRecipient[]
 
+  @@index([createdAt])
+  @@index([lastSeenAt])
   @@map("users")
 }
 
@@ -298,18 +331,22 @@ model Event {
 }
 
 model Message {
-  id             BigInt           @id @default(autoincrement())
-  userId         BigInt           @map("user_id")
-  direction      MessageDirection
-  text           String?
-  adminId        Int?             @map("admin_id")
-  adminMessageId BigInt?          @map("admin_message_id")
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  id                BigInt           @id @default(autoincrement())
+  userId            BigInt           @map("user_id")
+  direction         MessageDirection
+  messageType       MessageType      @default(text) @map("message_type")
+  telegramMessageId Int?             @map("telegram_message_id")
+  text              String?
+  adminId           Int?             @map("admin_id")
+  adminMessageId    BigInt?          @map("admin_message_id")
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz
 
   user  User   @relation(fields: [userId], references: [id])
   admin Admin? @relation(fields: [adminId], references: [id])
 
   @@index([adminMessageId])
+  @@index([userId, createdAt])
+  @@index([createdAt])
   @@map("messages")
 }
 
@@ -327,4 +364,109 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@map("audit_log")
+}
+
+// ---------- Veb admin panel ----------
+
+/** Admin panelga login qiladigan xodim (Telegram adminlaridan alohida) */
+model PanelUser {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  name         String
+  passwordHash String    @map("password_hash")
+  role         AdminRole @default(admin)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  broadcasts   Broadcast[]
+  activityLogs ActivityLog[]
+
+  @@map("panel_users")
+}
+
+model Broadcast {
+  id             Int               @id @default(autoincrement())
+  messageType    MessageType       @map("message_type")
+  text           String?
+  fileId         String?           @map("file_id")
+  fileName       String?           @map("file_name")
+  audience       BroadcastAudience
+  status         BroadcastStatus   @default(pending)
+  total          Int               @default(0)
+  sent           Int               @default(0)
+  failed         Int               @default(0)
+  skipped        Int               @default(0)
+  // Ikki marta yuborishdan himoya: frontend har bir forma uchun bitta kalit yuboradi
+  idempotencyKey String            @unique @map("idempotency_key")
+  createdById    Int?              @map("created_by")
+  startedAt      DateTime?         @map("started_at") @db.Timestamptz
+  finishedAt     DateTime?         @map("finished_at") @db.Timestamptz
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  createdBy  PanelUser?           @relation(fields: [createdById], references: [id])
+  recipients BroadcastRecipient[]
+
+  @@index([createdAt])
+  @@map("broadcasts")
+}
+
+model BroadcastRecipient {
+  id                BigInt          @id @default(autoincrement())
+  broadcastId       Int             @map("broadcast_id")
+  userId            BigInt          @map("user_id")
+  status            RecipientStatus @default(pending)
+  error             String?
+  telegramMessageId Int?            @map("telegram_message_id")
+  sentAt            DateTime?       @map("sent_at") @db.Timestamptz
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([broadcastId, userId])
+  @@index([broadcastId, status])
+  @@map("broadcast_recipients")
+}
+
+/** Admin paneldan boshqariladigan buyruqlar: javob matni bazadan olinadi */
+model BotCommand {
+  id          Int      @id @default(autoincrement())
+  command     String   @unique
+  description String   @default("")
+  response    String
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("bot_commands")
+}
+
+/** Telegram'dagi "Menu" tugmasi ro'yxati (setMyCommands) */
+model BotMenuItem {
+  id          Int      @id @default(autoincrement())
+  name        String
+  command     String   @unique
+  description String
+  order       Int      @default(0)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("bot_menu")
+}
+
+model ActivityLog {
+  id          BigInt   @id @default(autoincrement())
+  panelUserId Int?     @map("panel_user_id")
+  action      String
+  description String
+  ipAddress   String?  @map("ip_address")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  panelUser PanelUser? @relation(fields: [panelUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([panelUserId])
+  @@map("activity_logs")
 }

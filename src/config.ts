@@ -17,6 +17,9 @@ const optionalId = z
   .optional()
   .transform((s) => (s && s.trim() ? BigInt(s.trim()) : undefined));
 
+// Spetsifikatsiyadagi nom (TELEGRAM_BOT_TOKEN) ham qabul qilinadi
+process.env.BOT_TOKEN ??= process.env.TELEGRAM_BOT_TOKEN;
+
 const schema = z.object({
   BOT_TOKEN: z.string().min(10),
   SUPERADMIN_IDS: idList,
@@ -33,6 +36,14 @@ const schema = z.object({
   WEBHOOK_SECRET: z.string().optional(),
   PORT: z.coerce.number().default(8080),
   LOG_LEVEL: z.string().default("info"),
+
+  // --- Admin panel ---
+  JWT_SECRET: z.string().min(32, "JWT_SECRET kamida 32 belgi bo'lishi kerak"),
+  JWT_EXPIRES_IN: z.string().default("12h"),
+  // Bazadagi bot tokenini shifrlash kaliti. Berilmasa JWT_SECRET dan hosil qilinadi
+  ENCRYPTION_KEY: z.string().optional(),
+  // Frontend manzili (CORS). Vergul bilan bir nechta
+  CLIENT_URL: z.string().default("http://localhost:5173"),
 });
 
 export const config = schema.parse(process.env);

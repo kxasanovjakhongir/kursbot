@@ -6,6 +6,8 @@ export interface TgProfile {
   username?: string;
   first_name: string;
   last_name?: string;
+  language_code?: string;
+  is_bot?: boolean;
 }
 
 /** Foydalanuvchini yaratadi yoki profilini yangilaydi */
@@ -17,11 +19,14 @@ export async function upsertUser(from: TgProfile): Promise<User> {
       username: from.username ?? null,
       firstName: from.first_name,
       lastName: from.last_name ?? null,
+      languageCode: from.language_code ?? null,
+      isBot: from.is_bot ?? false,
     },
     update: {
       username: from.username ?? null,
       firstName: from.first_name,
       lastName: from.last_name ?? null,
+      languageCode: from.language_code ?? null,
       lastSeenAt: new Date(),
       isBlocked: false,
     },

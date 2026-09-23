@@ -17,7 +17,7 @@ const fakeApi = {
 
 async function reset() {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE events, audit_log, messages, reminders, access_grants, receipts, orders, promo_codes, cards, products, admins, settings, texts, users RESTART IDENTITY CASCADE`,
+    `TRUNCATE broadcast_recipients, broadcasts, events, audit_log, messages, reminders, access_grants, receipts, orders, promo_codes, cards, products, admins, settings, texts, users RESTART IDENTITY CASCADE`,
   );
   await prisma.product.createMany({
     data: [

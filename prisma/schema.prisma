@@ -79,6 +79,29 @@ enum BroadcastAudience {
   all
   active
   specific
+  // Kamida bitta tasdiqlangan xaridi borlar
+  buyers
+  // Hali xarid qilmaganlar
+  non_buyers
+  // Telegram adminlari (rol bo'yicha)
+  admins
+  // Ma'lum mahsulot egalari (Broadcast.productId)
+  product
+}
+
+// Kanal kirishi nima uchun bekor qilingan
+enum GrantRevokeReason {
+  expired // muddati tugagan (avtomatik)
+  removed // admin kanaldan chiqargan
+  banned // foydalanuvchi cheklangan
+}
+
+enum NotificationKind {
+  info
+  success
+  warning
+  order
+  message
 }
 
 enum BroadcastStatus {
@@ -110,20 +133,41 @@ model User {
   // Oxirgi START dagi mahsulot va manba — oqim davomida ishlatiladi
   lastProduct  String?   @map("last_product")
   lastSource   String?   @map("last_source")
+  // Oxirgi kampaniya linki (bot → Mini App → buyurtma yo'lida kontekst saqlanadi)
+  lastLinkId   Int?      @map("last_link_id")
+  // Birinchi kampaniya linki (first-touch) — keyingi linklar uni o'zgartirmaydi
+  firstLinkId  Int?      @map("first_link_id")
+  // Ro'yxatdan o'tgan vaqt: telefon raqamini ulashgan payt
+  registeredAt DateTime? @map("registered_at") @db.Timestamptz
+  lastLinkAt   DateTime? @map("last_link_at") @db.Timestamptz
+  // Foydalanuvchi botni bloklagan (Telegram 403)
   isBlocked    Boolean   @default(false) @map("is_blocked")
+  // Admin tomonidan cheklangan: bot unga javob bermaydi, broadcast yuborilmaydi
+  isBanned     Boolean   @default(false) @map("is_banned")
+  bannedAt     DateTime? @map("banned_at") @db.Timestamptz
+  // Bot interfeysi tili (uz/ru/en). null — sozlamalardagi default_language
+  language     String?
+  // Yangiliklar (broadcast) olishga rozilik. Buyurtma xabarlari har doim yuboriladi
+  newsEnabled  Boolean   @default(true) @map("news_enabled")
   referrerId   BigInt?   @map("referrer_id")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   lastSeenAt   DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
 
-  orders    Order[]
-  grants    AccessGrant[]
-  reminders Reminder[]
-  events    Event[]
-  messages  Message[]
+  orders              Order[]
+  grants              AccessGrant[]
+  lastLink            CampaignLink?        @relation("UserLastLink", fields: [lastLinkId], references: [id], onDelete: SetNull)
+  firstLink           CampaignLink?        @relation("UserFirstLink", fields: [firstLinkId], references: [id], onDelete: SetNull)
+  linkVisits          LinkVisit[]
+  reminders           Reminder[]
+  events              Event[]
+  messages            Message[]
   broadcastRecipients BroadcastRecipient[]
+  notifications       Notification[]
 
   @@index([createdAt])
   @@index([lastSeenAt])
+  @@index([firstLinkId])
+  @@index([registeredAt])
   @@map("users")
 }
 
@@ -142,55 +186,81 @@ model Product {
   filesMode      FilesMode   @default(auto) @map("files_mode")
   fileMessageIds BigInt[]    @default([]) @map("file_message_ids")
   accessDays     Int?        @map("access_days")
+  // Kurs ma'lumotlari (ixtiyoriy) — botda bo'lim tugmalari va Mini App'da ko'rsatiladi
+  duration       String?
+  lessonsCount   Int?        @map("lessons_count")
+  audience       String?
+  startDate      DateTime?   @map("start_date") @db.Date
+  teacher        String?
+  benefits       String?
+  program        String?
   isActive       Boolean     @default(true) @map("is_active")
+  // Paneldan o'chirilgan (buyurtmalar tarixi saqlanishi uchun yozuv qoladi, hamma joyda yashiriladi)
+  deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
   sortOrder      Int         @default(0) @map("sort_order")
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
-  orders Order[]
-  grants AccessGrant[]
-  promos PromoCode[]
+  orders     Order[]
+  grants     AccessGrant[]
+  links      CampaignLink[]
+  promos     PromoCode[]
+  broadcasts Broadcast[]
 
   @@map("products")
 }
 
 model Order {
-  id            BigInt        @id @default(autoincrement())
-  userId        BigInt        @map("user_id")
-  productId     Int           @map("product_id")
-  amount        Int
-  discount      Int           @default(0)
-  promoId       Int?          @map("promo_id")
-  cardId        Int?          @map("card_id")
-  status        OrderStatus   @default(new)
-  attempts      Int           @default(0)
+  id                BigInt        @id @default(autoincrement())
+  userId            BigInt        @map("user_id")
+  productId         Int           @map("product_id")
+  amount            Int
+  discount          Int           @default(0)
+  promoId           Int?          @map("promo_id")
+  cardId            Int?          @map("card_id")
+  status            OrderStatus   @default(new)
+  attempts          Int           @default(0)
   // BR-06: "Summa kam" bo'lganda yetishmayotgan summa
-  shortfall     Int?
-  reviewedById  Int?          @map("reviewed_by")
+  shortfall         Int?
+  reviewedById      Int?          @map("reviewed_by")
   // Admin paneldan tasdiqlangan/rad etilgan bo'lsa
-  reviewedByPanelId Int?      @map("reviewed_by_panel_user_id")
-  reviewedAt    DateTime?     @map("reviewed_at") @db.Timestamptz
-  rejectReason  String?       @map("reject_reason")
-  adminNote     String?       @map("admin_note")
-  expiresAt     DateTime      @map("expires_at") @db.Timestamptz
-  paidAt        DateTime?     @map("paid_at") @db.Timestamptz
-  source        String?
-  paymentMethod PaymentMethod @default(card) @map("payment_method")
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  reviewedByPanelId Int?          @map("reviewed_by_panel_user_id")
+  reviewedAt        DateTime?     @map("reviewed_at") @db.Timestamptz
+  rejectReason      String?       @map("reject_reason")
+  adminNote         String?       @map("admin_note")
+  expiresAt         DateTime      @map("expires_at") @db.Timestamptz
+  paidAt            DateTime?     @map("paid_at") @db.Timestamptz
+  source            String?
+  // Buyurtma qaysi kampaniya linki orqali kelgan (atribusiya: oxirgi link, 30 kun)
+  linkId            Int?          @map("link_id")
+  paymentMethod     PaymentMethod @default(card) @map("payment_method")
+  // Admin paneldan bekor qilingan (ochiq → cancelled, to'langan → refunded)
+  cancelledAt       DateTime?     @map("cancelled_at") @db.Timestamptz
+  cancelledById     Int?          @map("cancelled_by_panel_user_id")
+  cancelReason      String?       @map("cancel_reason")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz
 
-  user       User          @relation(fields: [userId], references: [id])
-  product    Product       @relation(fields: [productId], references: [id])
-  promo      PromoCode?    @relation(fields: [promoId], references: [id])
-  card       Card?         @relation(fields: [cardId], references: [id])
-  reviewedBy Admin?        @relation(fields: [reviewedById], references: [id])
-  reviewedByPanel PanelUser? @relation(fields: [reviewedByPanelId], references: [id], onDelete: SetNull)
-  receipts   Receipt[]
-  grants     AccessGrant[]
-  reminders  Reminder[]
+  user            User          @relation(fields: [userId], references: [id])
+  product         Product       @relation(fields: [productId], references: [id])
+  promo           PromoCode?    @relation(fields: [promoId], references: [id])
+  card            Card?         @relation(fields: [cardId], references: [id])
+  reviewedBy      Admin?        @relation(fields: [reviewedById], references: [id])
+  reviewedByPanel PanelUser?    @relation("OrderReviewedByPanel", fields: [reviewedByPanelId], references: [id], onDelete: SetNull)
+  cancelledBy     PanelUser?    @relation("OrderCancelledByPanel", fields: [cancelledById], references: [id], onDelete: SetNull)
+  receipts        Receipt[]
+  grants          AccessGrant[]
+  reminders       Reminder[]
+  // Admin panel: buyurtmalar ro'yxati (status filtri bilan va filtrsiz, yangilari birinchi)
+  link            CampaignLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
 
   @@index([userId, productId, status])
   @@index([status, expiresAt])
+  @@index([status, createdAt])
+  @@index([linkId])
+  // Analitika: daromad va xaridlar vaqt bo\'yicha
+  @@index([paidAt])
+  @@index([createdAt])
   @@map("orders")
 }
 
@@ -213,19 +283,22 @@ model Receipt {
 }
 
 model AccessGrant {
-  id            BigInt    @id @default(autoincrement())
-  userId        BigInt    @map("user_id")
-  productId     Int       @map("product_id")
-  orderId       BigInt    @map("order_id")
-  inviteLink    String?   @unique @map("invite_link")
-  linkExpiresAt DateTime? @map("link_expires_at") @db.Timestamptz
-  joinedAt      DateTime? @map("joined_at") @db.Timestamptz
-  expiresAt     DateTime? @map("expires_at") @db.Timestamptz
-  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz
-  filesSentAt   DateTime? @map("files_sent_at") @db.Timestamptz
+  id               BigInt             @id @default(autoincrement())
+  userId           BigInt             @map("user_id")
+  productId        Int                @map("product_id")
+  orderId          BigInt             @map("order_id")
+  inviteLink       String?            @unique @map("invite_link")
+  linkExpiresAt    DateTime?          @map("link_expires_at") @db.Timestamptz
+  joinedAt         DateTime?          @map("joined_at") @db.Timestamptz
+  expiresAt        DateTime?          @map("expires_at") @db.Timestamptz
+  revokedAt        DateTime?          @map("revoked_at") @db.Timestamptz
+  revokeReason     GrantRevokeReason? @map("revoke_reason")
+  // Muddat tugashidan oldingi eslatma yuborilgan vaqt (takror yuborilmasligi uchun)
+  expiryRemindedAt DateTime?          @map("expiry_reminded_at") @db.Timestamptz
+  filesSentAt      DateTime?          @map("files_sent_at") @db.Timestamptz
   // null = bot o'zi yuborgan
-  filesSentById Int?      @map("files_sent_by")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  filesSentById    Int?               @map("files_sent_by")
+  createdAt        DateTime           @default(now()) @map("created_at") @db.Timestamptz
 
   user        User    @relation(fields: [userId], references: [id])
   product     Product @relation(fields: [productId], references: [id])
@@ -233,6 +306,9 @@ model AccessGrant {
   filesSentBy Admin?  @relation(fields: [filesSentById], references: [id])
 
   @@index([userId, productId])
+  // Broadcast: "mahsulot egalari" auditoriyasi
+  @@index([productId])
+  // Muddat vazifasi uchun qisman indeks (WHERE revoked_at IS NULL AND expires_at IS NOT NULL) migratsiyada SQL bilan
   @@map("access_grants")
 }
 
@@ -330,6 +406,8 @@ model Event {
 
   @@index([name, createdAt])
   @@index([userId, name])
+  // Eski hodisalarni tozalash (EVENT_RETENTION_DAYS)
+  @@index([createdAt])
   @@map("events")
 }
 
@@ -371,21 +449,27 @@ model AuditLog {
 
 // ---------- Veb admin panel ----------
 
-/** Admin panelga login qiladigan xodim (Telegram adminlaridan alohida) */
+/**
+ * Admin panelga login qiladigan xodim (Telegram adminlaridan alohida)
+ */
 model PanelUser {
   id           Int       @id @default(autoincrement())
   email        String    @unique
   name         String
   passwordHash String    @map("password_hash")
+  // Telegram hisobi: berilsa shu odam botda ham admin (xuddi shu rol bilan) — panel bilan sinxron
+  telegramId   BigInt?   @unique @map("telegram_id")
   role         AdminRole @default(admin)
   isActive     Boolean   @default(true) @map("is_active")
   lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
-  broadcasts     Broadcast[]
-  activityLogs   ActivityLog[]
-  reviewedOrders Order[]
+  broadcasts      Broadcast[]
+  activityLogs    ActivityLog[]
+  reviewedOrders  Order[]        @relation("OrderReviewedByPanel")
+  cancelledOrders Order[]        @relation("OrderCancelledByPanel")
+  campaignLinks   CampaignLink[]
 
   @@map("panel_users")
 }
@@ -397,6 +481,8 @@ model Broadcast {
   fileId         String?           @map("file_id")
   fileName       String?           @map("file_name")
   audience       BroadcastAudience
+  // audience = product bo'lsa
+  productId      Int?              @map("product_id")
   status         BroadcastStatus   @default(pending)
   total          Int               @default(0)
   sent           Int               @default(0)
@@ -410,6 +496,7 @@ model Broadcast {
   createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
 
   createdBy  PanelUser?           @relation(fields: [createdById], references: [id])
+  product    Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
   recipients BroadcastRecipient[]
 
   @@index([createdAt])
@@ -433,7 +520,27 @@ model BroadcastRecipient {
   @@map("broadcast_recipients")
 }
 
-/** Admin paneldan boshqariladigan buyruqlar: javob matni bazadan olinadi */
+/**
+ * Foydalanuvchiga yuborilgan bildirishnomalar (buyurtma holati, admin xabari va h.k.)
+ */
+model Notification {
+  id        BigInt           @id @default(autoincrement())
+  userId    BigInt           @map("user_id")
+  kind      NotificationKind
+  text      String
+  // Telegram'ga yetkazildimi (bloklagan bo'lsa false)
+  delivered Boolean          @default(false)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/**
+ * Admin paneldan boshqariladigan buyruqlar: javob matni bazadan olinadi
+ */
 model BotCommand {
   id          Int      @id @default(autoincrement())
   command     String   @unique
@@ -446,7 +553,9 @@ model BotCommand {
   @@map("bot_commands")
 }
 
-/** Telegram'dagi "Menu" tugmasi ro'yxati (setMyCommands) */
+/**
+ * Telegram'dagi "Menu" tugmasi ro'yxati (setMyCommands)
+ */
 model BotMenuItem {
   id          Int      @id @default(autoincrement())
   name        String
@@ -473,4 +582,109 @@ model ActivityLog {
   @@index([createdAt])
   @@index([panelUserId])
   @@map("activity_logs")
+}
+
+// Bir nechta server (instance) ishlaganda fon vazifasini faqat bittasi bajaradi: muddatli "lease".
+// Egasi o'lsa, lease muddati tugagach boshqa instans oladi.
+model JobLock {
+  name      String   @id
+  owner     String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+
+  @@map("job_locks")
+}
+
+// Qisqa muddatli suhbat holati (masalan, admin rad etish sababini yozmoqda) — barcha instanslar uchun umumiy
+model BotState {
+  key       String   @id
+  value     Json
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+
+  @@index([expiresAt])
+  @@map("bot_state")
+}
+
+// Marketing: kampaniya (deep link) — t.me/bot?start=<code> va Mini App ?startapp=<code>.
+// Kod qaysi mahsulotga olib borishini baza belgilaydi (frontend/bot da hardcode yo'q)
+model CampaignLink {
+  id          Int      @id @default(autoincrement())
+  code        String   @unique
+  // Admin uchun nom (masalan "Instagram story — sentabr")
+  name        String?
+  productId   Int      @map("product_id")
+  source      String
+  campaign    String?
+  medium      String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy  PanelUser?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  visits     LinkVisit[]
+  orders     Order[]
+  lastUsers  User[]      @relation("UserLastLink")
+  firstUsers User[]      @relation("UserFirstLink")
+  clicks     LinkClick[]
+
+  @@index([productId])
+  @@map("campaign_links")
+}
+
+enum LinkVisitVia {
+  bot
+  webapp
+}
+
+// Link orqali har bir kirish (takroriy bosishlar 30 daqiqa ichida bitta hisoblanadi)
+model LinkVisit {
+  id        BigInt       @id @default(autoincrement())
+  linkId    Int          @map("link_id")
+  userId    BigInt       @map("user_id")
+  via       LinkVisitVia
+  isNewUser Boolean      @default(false) @map("is_new_user")
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  link CampaignLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([linkId, createdAt])
+  @@index([userId, linkId, createdAt])
+  @@map("link_visits")
+}
+
+// Tracking redirect (/l/<kod>) orqali bosishlar — Telegram t.me bosishni botga bildirmaydi.
+// IP saqlanmaydi: faqat kunlik tuzli hash (unique bosishlarni sanash uchun)
+model LinkClick {
+  id          BigInt   @id @default(autoincrement())
+  linkId      Int      @map("link_id")
+  visitorHash String   @map("visitor_hash")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  link CampaignLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@index([linkId, createdAt])
+  @@map("link_clicks")
+}
+
+// Texnik xatolar (logger.error/fatal) — panelda "Xatoliklar" bo'limi. Bir xil xato bitta yozuvga
+// guruhlanadi (fingerprint), takrorlanganda count va last_seen_at yangilanadi.
+model ErrorLog {
+  id          BigInt    @id @default(autoincrement())
+  fingerprint String    @unique
+  level       String
+  message     String
+  errorType   String?   @map("error_type")
+  errorText   String?   @map("error_text")
+  stack       String?
+  context     Json?
+  count       Int       @default(1)
+  firstSeenAt DateTime  @default(now()) @map("first_seen_at") @db.Timestamptz
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz
+  resolvedAt  DateTime? @map("resolved_at") @db.Timestamptz
+
+  @@index([resolvedAt, lastSeenAt])
+  @@index([lastSeenAt])
+  @@map("error_logs")
 }

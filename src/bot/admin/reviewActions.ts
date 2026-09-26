@@ -1,15 +1,18 @@
 import { InlineKeyboard, type Api } from "grammy";
 import { contactAdminKeyboard, reviewKeyboard } from "../keyboards";
-import { sendToAdminGroup, sendToUser } from "../notify";
+import { notifyUser, sendToAdminGroup } from "../notify";
 import { buildReceiptCaption } from "./receiptCard";
 import { escapeHtml, formatSum } from "../../lib/format";
 import { logger } from "../../lib/logger";
-import { approveOrder, getOrderFull, rejectOrder, type ReviewerRef } from "../../services/orders";
+import type { OrderStatus } from "@prisma/client";
+import { approveOrder, getOrderFull, rejectOrder, transition, type ReviewerRef } from "../../services/orders";
+import { KickFailedError, revokeGrant } from "../../services/membership";
 import { grantAccess } from "../../services/access";
 import { trackEvent } from "../../services/events";
 import { getSettings } from "../../services/settings";
-import { fill, REJECT_REASONS, t, type RejectReasonCode } from "../../services/texts";
-import { displayName } from "../../services/users";
+import { REJECT_REASONS, type RejectReasonCode } from "../../services/texts";
+import { label, translate } from "../../i18n";
+import { displayName, userLang } from "../../services/users";
 import { prisma } from "../../db";
 
 /**
@@ -67,14 +70,21 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
   }
   const withLinks = grants.filter((g) => g.inviteLink);
   const settings = await getSettings();
+  // Mijozga o'z tilida
+  const lang = await userLang(order.user);
 
-  let sent;
-  if (withLinks.length > 0) {
-    const kb = new InlineKeyboard();
-    for (const g of withLinks) kb.url(await t("btn_join", { mahsulot: g.product.title }), g.inviteLink!).row();
-    sent = await sendToUser(api, order.user.telegramId, await t("approved", { kun: settings.invite_link_days }), { reply_markup: kb });
-  } else {
-    sent = await sendToUser(api, order.user.telegramId, await t("approved_no_link"));
+  // Tasdiqlash bazada bajarildi — xabar yuborilmasa ham (tarmoq) admin qayta tasdiqlashga urinmasin
+  let sent = null;
+  try {
+    if (withLinks.length > 0) {
+      const kb = new InlineKeyboard();
+      for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: g.product.title }), g.inviteLink!).row();
+      sent = await notifyUser(api, order.user, "success", await translate(lang, "approved", { kun: settings.invite_link_days }), { reply_markup: kb });
+    } else {
+      sent = await notifyUser(api, order.user, "success", await translate(lang, "approved_no_link"));
+    }
+  } catch (err) {
+    logger.error({ err, orderId: orderId.toString() }, "tasdiqlash xabari mijozga yuborilmadi");
   }
 
   const missing = grants.filter((g) => !g.inviteLink).map((g) => g.product.title);
@@ -86,7 +96,7 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
     ).catch(() => undefined);
   }
   if (!sent) {
-    await sendToAdminGroup(api, `⚠️ Buyurtma #${orderId}: mijoz botni bloklagan — link yetkazilmadi.`).catch(() => undefined);
+    await sendToAdminGroup(api, `⚠️ Buyurtma #${orderId}: mijozga xabar yetkazilmadi (botni bloklagan yoki chat topilmadi). Linkni «Mening xaridlarim» dan olishini ayting.`).catch(() => undefined);
   }
   return true;
 }
@@ -102,10 +112,6 @@ export async function rejectAndNotify(
 ): Promise<{ ok: boolean; stored: string }> {
   const reason = REJECT_REASONS[code];
   const shortfall = code === "short" && extra ? Number(extra) : null;
-  const customerText = fill(reason.text, {
-    farq: shortfall ? formatSum(shortfall) : "",
-    matn: code === "other" ? (extra ?? "") : "",
-  });
   const stored =
     code === "short" ? `${reason.label} (${formatSum(shortfall ?? 0)})` : code === "other" ? `${reason.label}: ${extra}` : reason.label;
 
@@ -116,13 +122,81 @@ export async function rejectAndNotify(
   const order = (await getOrderFull(orderId))!;
   await trackEvent(order.userId, "rejected", { orderId: orderId.toString(), reason: code });
   const settings = await getSettings();
+  const lang = await userLang(order.user);
+  // Sabab mijoz tilida; qiymatlar (summa, admin matni) escape qilinadi
+  const customerText = await translate(lang, reason.textKey, {
+    farq: shortfall ? formatSum(shortfall) : "",
+    matn: code === "other" ? (extra ?? "") : "",
+  });
   const kb = new InlineKeyboard();
-  if (reason.resend && order.attempts < settings.max_receipt_attempts) kb.text(await t("btn_resend"), "resend").row();
-  kb.add(contactAdminKeyboard().inline_keyboard[0][0]);
+  if (reason.resend && order.attempts < settings.max_receipt_attempts) kb.text(label(lang, "btn_resend"), "resend").row();
+  kb.add(contactAdminKeyboard(lang).inline_keyboard[0][0]);
 
-  const sent = await sendToUser(api, order.user.telegramId, await t("rejected", {}, { sabab: customerText }), { reply_markup: kb });
+  const sent = await notifyUser(api, order.user, "warning", await translate(lang, "rejected", {}, { sabab: customerText }), { reply_markup: kb }).catch((err) => {
+    logger.error({ err, orderId: orderId.toString() }, "rad etish xabari mijozga yuborilmadi");
+    return null;
+  });
   if (!sent) {
     await sendToAdminGroup(api, `⚠️ Buyurtma #${orderId}: mijoz (${escapeHtml(displayName(order.user))}) botni bloklagan.`).catch(() => undefined);
   }
   return { ok: true, stored };
+}
+
+export type CancelResult =
+  | { ok: true; status: "cancelled" | "refunded"; revoked: number }
+  | { ok: false; reason: "not_found" | "closed" }
+  | { ok: false; reason: "kick_failed"; product: string };
+
+const CANCELLABLE_OPEN: OrderStatus[] = ["new", "receipt_sent", "rejected"];
+const CANCELLABLE_PAID: OrderStatus[] = ["approved", "joined"];
+
+/**
+ * Admin paneldan bekor qilish:
+ * - ochiq buyurtma (to'lov kutilmoqda / chek tekshirilmoqda / rad etilgan) → cancelled;
+ * - to'langan (tasdiqlangan / kanalga qo'shilgan) → refunded, mijoz shu buyurtma bergan kanallardan chiqariladi.
+ * Kanaldan chiqarib bo'lmasa (bot huquqi yo'q) — status o'zgarmaydi. Mijozga sabab bilan xabar boradi.
+ */
+export async function cancelAndNotify(api: Api, orderId: bigint, by: { panelUserId: number }, reason: string | null): Promise<CancelResult> {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { user: true, product: true, grants: { where: { revokedAt: null }, include: { product: true, user: true } } },
+  });
+  if (!order) return { ok: false, reason: "not_found" };
+  const paid = CANCELLABLE_PAID.includes(order.status);
+  if (!paid && !CANCELLABLE_OPEN.includes(order.status)) return { ok: false, reason: "closed" };
+
+  let revoked = 0;
+  if (paid) {
+    for (const grant of order.grants) {
+      try {
+        await revokeGrant(api, grant, "removed", { notify: false });
+        revoked++;
+      } catch (err) {
+        if (err instanceof KickFailedError) return { ok: false, reason: "kick_failed", product: err.productTitle };
+        throw err;
+      }
+    }
+  }
+
+  const to = paid ? "refunded" : "cancelled";
+  const ok = await transition(orderId, paid ? CANCELLABLE_PAID : CANCELLABLE_OPEN, to, {
+    cancelledAt: new Date(),
+    cancelledById: by.panelUserId,
+    cancelReason: reason,
+  });
+  if (!ok) return { ok: false, reason: "closed" };
+
+  // Chek tekshirilayotgan bo'lsa — guruhdagi kartochkadan tugmalar olinadi
+  await syncCards(api, orderId);
+  await trackEvent(order.userId, "order_cancelled", { orderId: orderId.toString(), by: "admin" });
+
+  if (!order.user.isBanned) {
+    const lang = await userLang(order.user);
+    const sabab = reason ? await translate(lang, "order_cancel_reason", { sabab: reason }) : "";
+    const text = await translate(lang, paid ? "order_refunded_by_admin" : "order_cancelled_by_admin", { raqam: orderId.toString(), mahsulot: order.product.title }, { sabab });
+    await notifyUser(api, order.user, "order", text, { reply_markup: contactAdminKeyboard(lang) }).catch((err) =>
+      logger.warn({ err, orderId: orderId.toString() }, "bekor qilish xabari yuborilmadi"),
+    );
+  }
+  return { ok: true, status: to, revoked };
 }

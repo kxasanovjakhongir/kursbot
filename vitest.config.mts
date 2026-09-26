@@ -9,6 +9,8 @@ export default defineConfig({
       JWT_SECRET: "test-secret-test-secret-test-secret-123",
       DATABASE_URL: process.env.TEST_DATABASE_URL ?? "postgresql://localhost:5432/unused",
       LOG_LEVEL: "silent",
+      WEB_APP_URL: "https://app.example.uz/app/",
+      METRICS_TOKEN: "test-metrics-token-0123456789",
     },
     fileParallelism: false,
   },

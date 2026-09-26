@@ -20,12 +20,27 @@ const loginLimiter = rateLimit({
   message: { error: "Juda ko'p urinish. 15 daqiqadan keyin qayta urinib ko'ring." },
 });
 
+// Bitta akkauntga ko'p IP dan parol terish: email bo'yicha, faqat muvaffaqiyatsiz urinishlar sanaladi
+const accountLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req) => {
+    const body: unknown = req.body;
+    const email = typeof body === "object" && body !== null && "email" in body && typeof body.email === "string" ? body.email : "";
+    return `login:${email.trim().toLowerCase().slice(0, 200)}`;
+  },
+  message: { error: "Bu akkauntga juda ko'p muvaffaqiyatsiz urinish. 15 daqiqadan keyin qayta urinib ko'ring." },
+});
+
 const loginSchema = z.object({
   email: z.string().trim().email().max(200),
   password: z.string().min(1).max(200),
 });
 
-authRouter.post("/login", loginLimiter, async (req, res) => {
+authRouter.post("/login", loginLimiter, accountLimiter, async (req, res) => {
   const { email, password } = parseBody(loginSchema, req);
   const user = await verifyCredentials(email, password);
   if (!user) {
@@ -64,7 +79,8 @@ authRouter.put("/password", requireAuth, async (req, res) => {
   if (!(await bcrypt.compare(body.currentPassword, full.passwordHash))) {
     throw new HttpError(400, "Joriy parol noto'g'ri");
   }
-  await prisma.panelUser.update({ where: { id: me.id }, data: { passwordHash: await hashPassword(body.newPassword) } });
+  const updated = await prisma.panelUser.update({ where: { id: me.id }, data: { passwordHash: await hashPassword(body.newPassword) } });
   await logActivity(me.id, "CHANGE_PASSWORD", "Parol o'zgartirildi", clientIp(req));
-  res.json({ ok: true });
+  // Boshqa qurilmalardagi sessiyalar bekor bo'ladi; shu qurilma yangi token bilan davom etadi
+  res.json({ ok: true, token: signToken(updated) });
 });

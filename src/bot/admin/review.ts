@@ -4,6 +4,9 @@ import { approveAndNotify, rejectAndNotify, syncCards, type CardRef } from "./re
 import { audit } from "../../services/events";
 import { isRejectReason, REJECT_REASONS, type RejectReasonCode } from "../../services/texts";
 import { prisma } from "../../db";
+import { z } from "zod";
+import { SharedState } from "../../services/sharedState";
+import { can } from "../../services/permissions";
 
 /** Telegram admin guruhidagi chek tugmalari */
 export const review = new Composer<BotContext>();
@@ -16,7 +19,7 @@ function clickedRef(ctx: BotContext): CardRef | undefined {
 
 // Admin tugmalari har safar ID bo'yicha qayta tekshiriladi (TZ 11.5)
 review.callbackQuery(/^adm:/, async (ctx, next) => {
-  if (!ctx.admin) {
+  if (!can(ctx.role, "orders.review")) {
     await ctx.answerCallbackQuery({ text: "Ruxsat yo'q", show_alert: true });
     return;
   }
@@ -24,7 +27,7 @@ review.callbackQuery(/^adm:/, async (ctx, next) => {
 });
 
 // ---------- Tasdiqlash ----------
-review.callbackQuery(/^adm:ap:(\d+)$/, async (ctx) => {
+review.callbackQuery(/^adm:ap:(\d{1,18})$/, async (ctx) => {
   const orderId = BigInt(ctx.match[1]);
   const admin = ctx.admin!;
   const ok = await approveAndNotify(ctx.api, orderId, { adminId: admin.id }, clickedRef(ctx));
@@ -47,7 +50,7 @@ function reasonsKeyboard(orderId: bigint): InlineKeyboard {
   return kb.row().text("⬅️ Orqaga", `adm:bk:${orderId}`);
 }
 
-review.callbackQuery(/^adm:rj:(\d+)$/, async (ctx) => {
+review.callbackQuery(/^adm:rj:(\d{1,18})$/, async (ctx) => {
   const orderId = BigInt(ctx.match[1]);
   const order = await prisma.order.findUnique({ where: { id: orderId } });
   if (order?.status !== "receipt_sent") {
@@ -59,13 +62,22 @@ review.callbackQuery(/^adm:rj:(\d+)$/, async (ctx) => {
   await ctx.editMessageReplyMarkup({ reply_markup: reasonsKeyboard(orderId) });
 });
 
-review.callbackQuery(/^adm:bk:(\d+)$/, async (ctx) => {
+review.callbackQuery(/^adm:bk:(\d{1,18})$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   await syncCards(ctx.api, BigInt(ctx.match[1]), clickedRef(ctx));
 });
 
 /** "Summa kam" va "Boshqa" uchun admin qo'shimcha ma'lumot yozadi */
-const pendingInput = new Map<number, { orderId: bigint; code: RejectReasonCode; card?: CardRef; at: number }>();
+const INPUT_TTL = 15 * 60_000;
+const pendingInput = new SharedState(
+  "reject_input",
+  INPUT_TTL,
+  z.object({
+    orderId: z.coerce.bigint(),
+    code: z.string().refine(isRejectReason),
+    card: z.object({ chatId: z.number(), messageId: z.number(), isMedia: z.boolean() }).optional(),
+  }),
+);
 
 async function reject(ctx: BotContext, orderId: bigint, code: RejectReasonCode, extra: string | null, card?: CardRef) {
   const admin = ctx.admin!;
@@ -74,14 +86,14 @@ async function reject(ctx: BotContext, orderId: bigint, code: RejectReasonCode, 
   return res.ok;
 }
 
-review.callbackQuery(/^adm:rr:(\d+):(\w+)$/, async (ctx) => {
+review.callbackQuery(/^adm:rr:(\d{1,18}):(\w+)$/, async (ctx) => {
   const orderId = BigInt(ctx.match[1]);
   const code = ctx.match[2];
   if (!isRejectReason(code)) return ctx.answerCallbackQuery();
 
   if (code === "short" || code === "other") {
     await ctx.answerCallbackQuery();
-    pendingInput.set(ctx.from.id, { orderId, code, card: clickedRef(ctx), at: Date.now() });
+    await pendingInput.set(ctx.from.id, { orderId, code, card: clickedRef(ctx) });
     const prompt =
       code === "short"
         ? `Buyurtma #${orderId}: yetishmayotgan summani yozing (masalan, 50000).`
@@ -97,15 +109,16 @@ review.callbackQuery(/^adm:rr:(\d+):(\w+)$/, async (ctx) => {
 });
 
 review.on("message:text", async (ctx, next) => {
-  const pending = ctx.admin ? pendingInput.get(ctx.from.id) : undefined;
-  if (!pending || Date.now() - pending.at > 15 * 60_000 || ctx.message.text.startsWith("/")) return next();
-  pendingInput.delete(ctx.from.id);
+  if (!can(ctx.role, "orders.review") || ctx.message.text.startsWith("/")) return next();
+  // Atomik: bir xil javob ikki marta qayta ishlanmaydi
+  const pending = await pendingInput.take(ctx.from.id);
+  if (!pending) return next();
 
   let extra: string;
   if (pending.code === "short") {
     const amount = Number(ctx.message.text.replace(/\D/g, ""));
     if (!amount) {
-      pendingInput.set(ctx.from.id, { ...pending, at: Date.now() });
+      await pendingInput.set(ctx.from.id, pending);
       await ctx.reply("Summani raqam bilan yozing, masalan: 50000");
       return;
     }

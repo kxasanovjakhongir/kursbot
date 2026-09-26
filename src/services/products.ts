@@ -45,3 +45,19 @@ export async function checkOwnership(userId: bigint, product: Product): Promise<
   if (missing.length < parts.length) return { kind: "partial", missing };
   return { kind: "none" };
 }
+
+/**
+ * Ro'yxat uchun egalik — bitta so'rov bilan (checkOwnership ni har bir mahsulotga chaqirmaslik uchun).
+ * To'plam: barcha qismlari bo'lsa "owned", bir qismi bo'lsa "partial".
+ */
+export async function ownershipMap(userId: bigint, products: Product[]): Promise<Map<number, Ownership["kind"]>> {
+  const [owned, all] = await Promise.all([ownedProductIds(userId), prisma.product.findMany({ select: { id: true, code: true } })]);
+  const idByCode = new Map(all.map((p) => [p.code, p.id]));
+  const result = new Map<number, Ownership["kind"]>();
+  for (const p of products) {
+    const parts = p.type === "bundle" ? p.bundleCodes.map((c) => idByCode.get(c)).filter((id): id is number => id !== undefined) : [p.id];
+    const have = parts.filter((id) => owned.has(id)).length;
+    result.set(p.id, parts.length > 0 && have === parts.length ? "owned" : have > 0 ? "partial" : "none");
+  }
+  return result;
+}

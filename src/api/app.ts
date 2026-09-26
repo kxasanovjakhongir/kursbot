@@ -6,8 +6,10 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { config } from "../config";
-import { requireAuth, requireSuperAdmin } from "./auth";
+import { requireAuth, requirePermission } from "./auth";
 import { errorHandler, notFound } from "./errors";
+import { mountProbes, requestObserver } from "./observability";
+import { mountTrackingRedirect } from "./trackingRedirect";
 import type { BotRuntime } from "./runtime";
 import { authRouter } from "./routes/auth";
 import { dashboardRouter } from "./routes/dashboard";
@@ -22,6 +24,10 @@ import { activityRouter } from "./routes/activity";
 import { ordersRouter } from "./routes/orders";
 import { productsRouter } from "./routes/products";
 import { cardsRouter } from "./routes/cards";
+import { linksRouter } from "./routes/links";
+import { analyticsRouter } from "./routes/analytics";
+import { webAppRouter } from "./webapp/router";
+import { errorsRouter } from "./routes/errors";
 
 export interface AppOptions {
   runtime: BotRuntime;
@@ -35,8 +41,33 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   app.set("trust proxy", 1);
   // BigInt (Telegram ID, buyurtma raqami) JSON da satr sifatida
   app.set("json replacer", (_key: string, value: unknown) => (typeof value === "bigint" ? value.toString() : value));
+  app.use(requestObserver); // request ID, metrikalar, tuzilgan log
 
-  if (webhook) app.post(webhook.path, express.json({ limit: "10mb" }), webhook.handler);
+  // Telegram update lari kichik (odatda < 10 KB); 1 MB — katta zaxira, lekin xotirani to'ldirib bo'lmaydi
+  if (webhook) app.post(webhook.path, express.json({ limit: "1mb" }), webhook.handler);
+
+  // Telegram Mini App (webapp/dist) — /app/ ostida. Telegram Web uni iframe da ochadi, shuning uchun
+  // frame-ancestors Telegram domenlariga ochiq, SDK esa telegram.org dan yuklanadi
+  const webappDist = path.resolve(__dirname, "../../webapp/dist");
+  if (existsSync(webappDist)) {
+    const webappHeaders = helmet({
+      frameguard: false,
+      contentSecurityPolicy: {
+        directives: {
+          "script-src": ["'self'", "https://telegram.org"],
+          "img-src": ["'self'", "data:", "blob:", "https://t.me", "https://*.t.me", "https://*.telegram.org"],
+          "frame-ancestors": ["'self'", "https://web.telegram.org", "https://*.telegram.org"],
+          "connect-src": ["'self'"],
+        },
+      },
+    });
+    app.use("/app", webappHeaders, express.static(webappDist, { index: false, maxAge: "1h" }));
+    // SPA: istalgan /app/... yo'li index.html (u keshlanmaydi — yangi versiya darhol ko'rinadi)
+    app.get(/^\/app(\/.*)?$/, webappHeaders, (_req, res) => {
+      res.setHeader("Cache-Control", "no-cache");
+      res.sendFile(path.join(webappDist, "index.html"));
+    });
+  }
 
   app.use(
     helmet({
@@ -49,37 +80,54 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
       },
     }),
   );
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true });
-  });
+  mountProbes(app, runtime);
+  mountTrackingRedirect(app, runtime);
 
   const api = express.Router();
   api.use(
     cors({
-      origin: config.CLIENT_URL.split(",").map((s) => s.trim()),
+      // Admin panel va (alohida hostingda bo'lsa) Mini App manzillari
+      origin: [...config.CLIENT_URL.split(",").map((s) => s.trim()), ...(config.WEB_APP_URL ? [new URL(config.WEB_APP_URL).origin] : [])],
       credentials: false,
     }),
   );
   api.use(express.json({ limit: "1mb" }));
-  api.use(rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: "draft-7", legacyHeaders: false }));
+  // Panel API: IP bo'yicha. Mini App (/app) o'z limitlariga ega (foydalanuvchi ID bo'yicha)
+  api.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: 300,
+      standardHeaders: "draft-7",
+      legacyHeaders: false,
+      skip: (req) => req.path.startsWith("/app/"),
+      message: { error: "Juda ko'p so'rov. Birozdan keyin qayta urinib ko'ring.", details: { code: "rate_limited" } },
+    }),
+  );
 
   api.use("/auth", authRouter);
+  // Telegram Mini App (o'z autentifikatsiyasi bilan — initData)
+  api.use("/app", webAppRouter(runtime));
 
   // Quyidagilarning barchasi JWT talab qiladi
+  // Har bir bo'lim o'z ruxsati bilan (rollar jadvali: services/permissions.ts)
   api.use(requireAuth);
-  api.use("/dashboard", dashboardRouter);
-  api.use("/bot/commands", commandsRouter);
-  api.use("/bot/menu", menuRouter(runtime));
+  api.use("/dashboard", requirePermission("stats.view"), dashboardRouter);
+  api.use("/analytics", requirePermission("stats.view"), analyticsRouter);
+  api.use("/bot/commands", requirePermission("content.manage"), commandsRouter);
+  api.use("/bot/menu", requirePermission("content.manage"), menuRouter(runtime));
+  // Marketing: kampaniya (deep link) havolalari va ularning statistikasi
+  api.use("/links", requirePermission("content.manage"), linksRouter(runtime));
   api.use("/bot", botRouter(runtime));
-  api.use("/telegram-users", telegramUsersRouter);
-  api.use("/messages", messagesRouter);
-  api.use("/broadcast", broadcastRouter(runtime));
-  api.use("/orders", ordersRouter(runtime));
+  api.use("/telegram-users", requirePermission("users.view"), telegramUsersRouter(runtime));
+  api.use("/messages", requirePermission("users.view"), messagesRouter);
+  api.use("/broadcast", requirePermission("broadcast.send"), broadcastRouter(runtime));
+  api.use("/orders", requirePermission("orders.review"), ordersRouter(runtime));
   // Narx, video, kanal va kartalar — faqat SUPER_ADMIN (TZ 2.2)
-  api.use("/products", requireSuperAdmin, productsRouter(runtime));
-  api.use("/cards", requireSuperAdmin, cardsRouter);
-  api.use("/admins", requireSuperAdmin, adminsRouter);
-  api.use("/activity-logs", requireSuperAdmin, activityRouter);
+  api.use("/products", requirePermission("products.manage"), productsRouter(runtime));
+  api.use("/cards", requirePermission("cards.manage"), cardsRouter);
+  api.use("/admins", requirePermission("admins.manage"), adminsRouter(runtime));
+  api.use("/activity-logs", requirePermission("logs.view"), activityRouter);
+  api.use("/errors", requirePermission("logs.view"), errorsRouter);
   api.use(notFound);
 
   app.use("/api", api);
@@ -88,7 +136,7 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   const dist = path.resolve(__dirname, "../../admin/dist");
   if (existsSync(dist)) {
     app.use(express.static(dist, { index: false, maxAge: "1h" }));
-    app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(dist, "index.html")));
+    app.get(/^(?!\/api\/|\/app(\/|$)).*/, (_req, res) => res.sendFile(path.join(dist, "index.html")));
   }
 
   app.use(notFound);

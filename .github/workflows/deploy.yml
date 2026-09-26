@@ -1,0 +1,38 @@
+name: Deploy
+# Qo'lda ishga tushiriladi (Actions → Deploy → Run workflow). Avval to'liq CI o'tadi, keyin serverda deploy/deploy.sh.
+# Kerakli secretlar (Settings → Environments → production): SSH_HOST, SSH_USER, SSH_KEY, SSH_KNOWN_HOSTS, APP_DIR
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Versiya (teg yoki commit). Bo'sh — tanlangan branch oxiri"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    # "production" environment — kerak bo'lsa GitHub'da qo'lda tasdiqlash (required reviewers) yoqiladi
+    environment: production
+    steps:
+      - name: SSH kalit
+        run: |
+          install -m 700 -d ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+      - name: Serverda deploy
+        env:
+          REF: ${{ inputs.ref || github.sha }}
+        run: |
+          # shellcheck disable=SC2029 # versiya klient tomonida qo'yiladi (ataylab)
+          ssh "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "cd '${{ secrets.APP_DIR }}' && git fetch --tags --quiet origin && deploy/deploy.sh '$REF'"

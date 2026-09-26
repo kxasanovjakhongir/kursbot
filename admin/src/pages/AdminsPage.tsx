@@ -15,6 +15,7 @@ interface FormState {
   password: string;
   role: Role;
   isActive: boolean;
+  telegramId: string;
 }
 
 export default function AdminsPage() {
@@ -31,9 +32,15 @@ export default function AdminsPage() {
     setSaving(true);
     try {
       if (form.id) {
-        await api.put(`/admins/${form.id}`, { name: form.name, role: form.role, isActive: form.isActive, ...(form.password ? { password: form.password } : {}) });
+        await api.put(`/admins/${form.id}`, {
+          name: form.name,
+          role: form.role,
+          isActive: form.isActive,
+          telegramId: form.telegramId.trim() || null,
+          ...(form.password ? { password: form.password } : {}),
+        });
       } else {
-        await api.post("/admins", { email: form.email, name: form.name, password: form.password, role: form.role });
+        await api.post("/admins", { email: form.email, name: form.name, password: form.password, role: form.role, telegramId: form.telegramId.trim() || null });
       }
       toast.success("Saqlandi");
       setForm(null);
@@ -61,9 +68,9 @@ export default function AdminsPage() {
     <>
       <PageHeader
         title="Adminlar"
-        subtitle="Admin panelga kirish huquqi bor xodimlar"
+        subtitle="Admin panelga kirish huquqi bor xodimlar. Telegram ID berilsa — shu odam Telegram botda ham admin bo'ladi (xuddi shu rol bilan)"
         action={
-          <Button onClick={() => setForm({ id: null, email: "", name: "", password: "", role: "admin", isActive: true })}>
+          <Button onClick={() => setForm({ id: null, email: "", name: "", password: "", role: "admin", isActive: true, telegramId: "" })}>
             <Plus className="h-4 w-4" /> Admin qo'shish
           </Button>
         }
@@ -78,6 +85,7 @@ export default function AdminsPage() {
                   <Th>Email</Th>
                   <Th>Rol</Th>
                   <Th>Holat</Th>
+                  <Th title="Telegram botdagi admin huquqi">Telegram bot</Th>
                   <Th className="hidden md:table-cell">Oxirgi kirish</Th>
                   <Th />
                 </tr>
@@ -91,10 +99,20 @@ export default function AdminsPage() {
                   <Td className="text-gray-600">{a.email}</Td>
                   <Td>{a.role === "superadmin" ? <Badge tone="blue">Super Admin</Badge> : <Badge tone="gray">Admin</Badge>}</Td>
                   <Td>{a.isActive ? <Badge tone="green">Faol</Badge> : <Badge tone="red">Bloklangan</Badge>}</Td>
+                  <Td>
+                    {a.telegramId ? (
+                      <>
+                        {a.bot ? <Badge tone="blue">🤖 {a.bot.role === "superadmin" ? "Super admin" : "Admin"}</Badge> : <Badge tone="gray">botda faol emas</Badge>}
+                        <div className="mt-0.5 font-mono text-xs text-gray-500">{a.telegramId}</div>
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-400">biriktirilmagan</span>
+                    )}
+                  </Td>
                   <Td className="hidden whitespace-nowrap text-gray-500 md:table-cell">{fmtDateTime(a.lastLoginAt)}</Td>
                   <Td>
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="sm" onClick={() => setForm({ id: a.id, email: a.email, name: a.name, password: "", role: a.role, isActive: a.isActive })} aria-label="Tahrirlash">
+                      <Button variant="ghost" size="sm" onClick={() => setForm({ id: a.id, email: a.email, name: a.name, password: "", role: a.role, isActive: a.isActive, telegramId: a.telegramId ?? "" })} aria-label="Tahrirlash">
                         <Pencil className="h-4 w-4" />
                       </Button>
                       {a.id !== me?.id && (
@@ -142,6 +160,19 @@ export default function AdminsPage() {
                 <option value="admin">Admin</option>
                 <option value="superadmin">Super Admin</option>
               </Select>
+            </Field>
+            <Field
+              label="Telegram ID (ixtiyoriy)"
+              hint="Berilsa, shu odam Telegram botda ham admin bo'ladi (xuddi shu rol bilan) va unga botda xabar keladi. ID ni bilish: u @userinfobot ga yozadi. Bo'sh qoldirilsa — botdagi huquq olinadi"
+            >
+              <Input
+                inputMode="numeric"
+                maxLength={15}
+                value={form.telegramId}
+                onChange={(e) => setForm({ ...form, telegramId: e.target.value.replace(/\D/g, "") })}
+                placeholder="123456789"
+                className="font-mono"
+              />
             </Field>
             {form.id && form.id !== me?.id && (
               <div className="flex items-center gap-3">

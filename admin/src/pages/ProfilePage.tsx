@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { api, errorMessage } from "../lib/api";
+import { api, errorMessage, tokenStore } from "../lib/api";
 import { fmtDateTime } from "../lib/format";
 import type { PanelUser } from "../lib/types";
 import { Badge, Button, Card, CardHeader, Field, Input, PageHeader } from "../components/ui";
@@ -35,7 +35,9 @@ export default function ProfilePage() {
     if (pw.newPassword !== pw.confirm) return toast.error("Yangi parollar mos emas");
     setSavingPw(true);
     try {
-      await api.put("/auth/password", { currentPassword: pw.currentPassword, newPassword: pw.newPassword });
+      // Parol o'zgarsa eski tokenlar bekor bo'ladi — server yangisini beradi
+      const res = await api.put<{ token: string }>("/auth/password", { currentPassword: pw.currentPassword, newPassword: pw.newPassword });
+      tokenStore.set(res.data.token);
       setPw({ currentPassword: "", newPassword: "", confirm: "" });
       toast.success("Parol o'zgartirildi");
     } catch (err) {

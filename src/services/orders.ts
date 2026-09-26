@@ -7,8 +7,9 @@ import { getSettings } from "./settings";
 /** Ruxsat etilgan o'tishlar (TZ 8.1). Boshqa har qanday o'zgarish xato. */
 export const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
   new: ["receipt_sent", "expired", "cancelled"],
-  receipt_sent: ["approved", "rejected"],
-  rejected: ["receipt_sent", "expired"],
+  // cancelled — admin paneldan bekor qilish
+  receipt_sent: ["approved", "rejected", "cancelled"],
+  rejected: ["receipt_sent", "expired", "cancelled"],
   approved: ["joined", "refunded"],
   joined: ["refunded"],
   expired: [],
@@ -18,6 +19,9 @@ export const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
 
 /** "Ochiq" buyurtma statuslari (BR-01) */
 export const OPEN_STATUSES: OrderStatus[] = ["new", "receipt_sent", "rejected"];
+
+/** To'lovi tasdiqlangan statuslar (tushum hisobi) */
+export const PAID_STATUSES: OrderStatus[] = ["approved", "joined"];
 
 export function canTransition(from: OrderStatus, to: OrderStatus): boolean {
   return TRANSITIONS[from].includes(to);
@@ -76,6 +80,16 @@ export type CreateOrderResult =
   | { kind: "no_card" }
   | { kind: "no_price" };
 
+/** Link orqali kelgan buyurtma shu muddat ichida linkka bog'lanadi (oxirgi bosilgan link — last-click) */
+export const ATTRIBUTION_DAYS = 30;
+
+/** Buyurtma qaysi kampaniya linkidan kelgan: foydalanuvchining oxirgi linki ATTRIBUTION_DAYS ichida bo'lsa */
+async function attributedLinkId(tx: Prisma.TransactionClient, userId: bigint): Promise<number | null> {
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { lastLinkId: true, lastLinkAt: true } });
+  if (!user?.lastLinkId || !user.lastLinkAt) return null;
+  return Date.now() - user.lastLinkAt.getTime() <= ATTRIBUTION_DAYS * 86400_000 ? user.lastLinkId : null;
+}
+
 /**
  * "Darslikni olaman": yangi buyurtma, narx qotiriladi, karta tanlanadi, muddat 72 soat (TZ 5.4).
  * Shu mahsulotga ochiq buyurtma bo'lsa — o'sha qaytariladi (BR-01).
@@ -98,6 +112,7 @@ export async function createOrder(userId: bigint, product: Product, source: stri
           amount: Math.round(product.price),
           cardId: card.id,
           source,
+          linkId: await attributedLinkId(tx, userId),
           expiresAt: new Date(Date.now() + settings.order_ttl_hours * 3600_000),
         },
       });
@@ -193,6 +208,13 @@ export async function rejectOrder(
   });
 }
 
+/** Mijoz o'zi bekor qiladi — faqat chek yuborilmagan (new) o'z buyurtmasini */
+export async function cancelOrder(userId: bigint, orderId: bigint): Promise<boolean> {
+  const order = await prisma.order.findFirst({ where: { id: orderId, userId }, select: { id: true } });
+  if (!order) return false;
+  return transition(orderId, ["new"], "cancelled");
+}
+
 export async function markJoined(orderId: bigint): Promise<boolean> {
   return transition(orderId, ["approved"], "joined");
 }
@@ -200,7 +222,15 @@ export async function markJoined(orderId: bigint): Promise<boolean> {
 export async function getOrderFull(orderId: bigint) {
   return prisma.order.findUnique({
     where: { id: orderId },
-    include: { user: true, product: true, card: true, promo: true, reviewedBy: true, reviewedByPanel: { select: { name: true } } },
+    include: {
+      user: true,
+      product: true,
+      card: true,
+      promo: true,
+      reviewedBy: true,
+      reviewedByPanel: { select: { name: true } },
+      cancelledBy: { select: { name: true } },
+    },
   });
 }
 
@@ -210,5 +240,35 @@ export async function pendingReceiptOrders(limit = 20) {
     include: { user: true, product: true, receipts: { orderBy: { id: "desc" }, take: 1 } },
     orderBy: { updatedAt: "asc" },
     take: limit,
+  });
+}
+
+/** Mijozning buyurtmalari (Mini App: "Buyurtmalar tarixi") */
+export async function listUserOrders(userId: bigint, page: number, pageSize: number) {
+  await expireStaleOrders(userId);
+  const where = { userId };
+  const [items, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: { product: { select: { code: true, title: true } } },
+    }),
+    prisma.order.count({ where }),
+  ]);
+  return { items, total };
+}
+
+/** Faqat o'z buyurtmasi — boshqa odamning raqamini yozib ko'rish befoyda */
+export async function getUserOrder(userId: bigint, orderId: bigint) {
+  await expireStaleOrders(userId);
+  return prisma.order.findFirst({
+    where: { id: orderId, userId },
+    include: {
+      product: { select: { code: true, title: true } },
+      card: { select: { number: true, holder: true, bank: true } },
+      receipts: { select: { id: true, createdAt: true }, orderBy: { id: "desc" }, take: 1 },
+    },
   });
 }

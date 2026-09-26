@@ -1,11 +1,41 @@
 import type { Api } from "grammy";
 import { InlineKeyboard } from "grammy";
-import { escapeHtml, formatPhone, formatShortDateTime, formatSum } from "../../lib/format";
+import { escapeHtml, formatPhone, formatShortDateTime, formatSum, stripHtml, truncate } from "../../lib/format";
 import { displayName } from "../../services/users";
 import { getOrderFull } from "../../services/orders";
 import { getSettings } from "../../services/settings";
 import { reviewKeyboard } from "../keyboards";
 import { prisma } from "../../db";
+
+/** Telegram media izohi chegarasi (rasm/hujjat caption) */
+export const CAPTION_LIMIT = 1024;
+/** Admin yozgan erkin matn (rad etish/bekor qilish sababi) kartochkada shu uzunlikkacha */
+const REASON_MAX = 200;
+
+const STATUS_LABEL: Record<string, string> = {
+  new: "to'lov kutilmoqda",
+  expired: "muddati o'tgan",
+  cancelled: "bekor qilingan",
+  refunded: "bekor qilingan (to'langan edi)",
+};
+
+/**
+ * Izoh 1024 belgidan oshsa Telegram xabarni umuman yubormaydi — chek adminlarga yetmay qolardi.
+ * Oshsa, avval ikkinchi darajali qatorlar (manba, sanalar, urinish) olib tashlanadi; baribir
+ * oshsa — matn qisqartiriladi (teglar yopilmay qolmasligi uchun oddiy matn sifatida).
+ */
+const OPTIONAL_PREFIXES = ["Manba:", "Buyurtma ochilgan:", "Urinish:"];
+
+export function fitCaption(lines: string[]): string {
+  const fits = (ls: string[]) => stripHtml(ls.join("\n")).length <= CAPTION_LIMIT;
+  if (fits(lines)) return lines.join("\n");
+  let out = [...lines];
+  for (const prefix of OPTIONAL_PREFIXES) {
+    out = out.filter((l) => !l.startsWith(prefix));
+    if (fits(out)) return out.join("\n");
+  }
+  return escapeHtml(truncate(stripHtml(out.join("\n")), CAPTION_LIMIT));
+}
 
 export interface CardFlags {
   isDuplicate?: boolean;
@@ -24,7 +54,7 @@ export async function buildReceiptCaption(orderId: bigint, flags: CardFlags = {}
   if (order.shortfall && order.attempts > 1) {
     warn.push(`🟠 <b>Qisman to'lov</b> — oldingi chekda ${formatSum(order.shortfall)} kam edi`);
   } else if (order.attempts > 1) {
-    warn.push(`🟡 Qayta urinish (oldingi sabab: ${escapeHtml(order.rejectReason ?? "—")})`);
+    warn.push(`🟡 Qayta urinish (oldingi sabab: ${escapeHtml(truncate(order.rejectReason ?? "—", REASON_MAX))})`);
   }
 
   const u = order.user;
@@ -52,11 +82,14 @@ export async function buildReceiptCaption(orderId: bigint, flags: CardFlags = {}
   if (order.status === "approved" || order.status === "joined") {
     lines.push("", `✅ <b>Tasdiqlandi</b>: ${reviewer}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
   } else if (order.status === "rejected") {
-    lines.push("", `❌ <b>Rad etildi</b>: ${escapeHtml(order.rejectReason ?? "")} — ${reviewer}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
+    lines.push("", `❌ <b>Rad etildi</b>: ${escapeHtml(truncate(order.rejectReason ?? "", REASON_MAX))} — ${reviewer}, ${order.reviewedAt ? formatShortDateTime(order.reviewedAt) : ""}`);
   } else if (order.status !== "receipt_sent") {
-    lines.push("", `ℹ️ Holat: ${order.status}`);
+    const cancelled = order.cancelledAt
+      ? ` — ${escapeHtml(order.cancelledBy?.name ?? "admin")} (panel), ${formatShortDateTime(order.cancelledAt)}${order.cancelReason ? `\nSabab: ${escapeHtml(truncate(order.cancelReason, REASON_MAX))}` : ""}`
+      : "";
+    lines.push("", `ℹ️ Holat: <b>${STATUS_LABEL[order.status] ?? order.status}</b>${cancelled}`);
   }
-  return lines.join("\n");
+  return fitCaption(lines);
 }
 
 /** Chek rasmi + kartochka + tugmalarni yuboradi (rasm caption bilan birga) */

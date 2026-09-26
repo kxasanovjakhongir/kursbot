@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Eye, Send, Upload } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { api, errorMessage } from "../lib/api";
-import { fmtNumber } from "../lib/format";
+import { AUDIENCE_LABEL, fmtNumber } from "../lib/format";
 import type { Audience, Broadcast, BotStatus, BroadcastType } from "../lib/types";
 import { TelegramPreview } from "../components/TelegramPreview";
 import { Button, Card, CardHeader, ConfirmModal, Field, PageHeader, Select, Textarea } from "../components/ui";
@@ -17,6 +17,17 @@ const TYPES: { value: BroadcastType; label: string; accept: string }[] = [
 
 const newKey = () => crypto.randomUUID();
 
+const AUDIENCE_HINT: Record<Audience, string> = {
+  active: "botni bloklamaganlar",
+  all: "bloklaganlar o'tkazib yuboriladi",
+  buyers: "kamida bitta tasdiqlangan xaridi bor",
+  non_buyers: "botga kirgan, lekin xarid qilmagan",
+  product: "tanlangan darslikka kirishi borlar",
+  admins: "Telegram'dagi chek tekshiruvchilar",
+  specific: "Telegram ID yoki @username bo'yicha",
+};
+const AUDIENCES = Object.keys(AUDIENCE_HINT) as Audience[];
+
 export default function BroadcastPage() {
   const toast = useToast();
   const navigate = useNavigate();
@@ -25,6 +36,8 @@ export default function BroadcastPage() {
   const [file, setFile] = useState<File | null>(null);
   const [audience, setAudience] = useState<Audience>("active");
   const [recipients, setRecipients] = useState("");
+  const [productId, setProductId] = useState("");
+  const [products, setProducts] = useState<{ id: number; title: string }[]>([]);
   const [showPreview, setShowPreview] = useState(true);
   const [confirm, setConfirm] = useState<{ count: number; notFound: string[] } | null>(null);
   const [counting, setCounting] = useState(false);
@@ -35,13 +48,18 @@ export default function BroadcastPage() {
 
   useEffect(() => {
     api.get<BotStatus>("/bot/status").then((r) => r.data.name && setBotName(r.data.name)).catch(() => undefined);
+    api.get<{ id: number; title: string }[]>("/broadcast/products").then((r) => setProducts(r.data)).catch(() => undefined);
   }, []);
 
   const fileUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
   useEffect(() => () => void (fileUrl && URL.revokeObjectURL(fileUrl)), [fileUrl]);
 
   const captionLimit = type === "text" ? 4096 : 1024;
-  const valid = (type === "text" ? text.trim().length > 0 : !!file) && text.length <= captionLimit && (audience !== "specific" || recipients.trim().length > 0);
+  const valid =
+    (type === "text" ? text.trim().length > 0 : !!file) &&
+    text.length <= captionLimit &&
+    (audience !== "specific" || recipients.trim().length > 0) &&
+    (audience !== "product" || productId !== "");
 
   const askConfirm = async (e: FormEvent) => {
     e.preventDefault();
@@ -49,7 +67,11 @@ export default function BroadcastPage() {
     setCounting(true);
     try {
       const r = await api.get<{ count: number; notFound: string[] }>("/broadcast/recipients-count", {
-        params: { audience, recipients: audience === "specific" ? recipients : undefined },
+        params: {
+          audience,
+          recipients: audience === "specific" ? recipients : undefined,
+          productId: audience === "product" ? productId : undefined,
+        },
       });
       if (r.data.count === 0) return toast.error("Qabul qiluvchilar topilmadi");
       setConfirm(r.data);
@@ -68,6 +90,7 @@ export default function BroadcastPage() {
       if (text) form.append("text", text);
       form.append("audience", audience);
       if (audience === "specific") form.append("recipients", recipients);
+      if (audience === "product") form.append("productId", productId);
       form.append("idempotencyKey", idempotencyKey);
       if (file && type !== "text") form.append("file", file);
       const r = await api.post<{ broadcast: Broadcast; created: boolean }>("/broadcast", form, { timeout: 120_000 });
@@ -127,11 +150,26 @@ export default function BroadcastPage() {
 
             <Field label="Qabul qiluvchilar">
               <Select value={audience} onChange={(e) => setAudience(e.target.value as Audience)}>
-                <option value="active">Faol foydalanuvchilar (botni bloklamaganlar)</option>
-                <option value="all">Barcha foydalanuvchilar (bloklaganlar o'tkazib yuboriladi)</option>
-                <option value="specific">Tanlangan foydalanuvchilar</option>
+                {AUDIENCES.map((a) => (
+                  <option key={a} value={a}>
+                    {AUDIENCE_LABEL[a]} ({AUDIENCE_HINT[a]})
+                  </option>
+                ))}
               </Select>
             </Field>
+            <p className="-mt-3 text-xs text-gray-500">Cheklangan foydalanuvchilar va yangiliklarni o'chirganlar ommaviy xabar olmaydi.</p>
+            {audience === "product" && (
+              <Field label="Darslik">
+                <Select value={productId} onChange={(e) => setProductId(e.target.value)}>
+                  <option value="">— tanlang —</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.title}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
             {audience === "specific" && (
               <Field label="Telegram ID yoki @username" hint="Har birini yangi qatorda yoki vergul bilan">
                 <Textarea rows={3} value={recipients} onChange={(e) => setRecipients(e.target.value)} placeholder={"5046885620\n@username"} />

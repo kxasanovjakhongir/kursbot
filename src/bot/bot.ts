@@ -1,84 +1,121 @@
-import { Bot } from "grammy";
-import type { BotContext } from "./context";
-import { logger } from "../lib/logger";
-import { getAdmin } from "../services/admins";
-import { upsertUser } from "../services/users";
-import { prisma } from "../db";
+import { Bot, GrammyError, HttpError, type BotConfig, type Transformer } from "grammy";
+import { autoRetry } from "@grammyjs/auto-retry";
+import { sequentialize } from "@grammyjs/runner";
+import { BotContext } from "./context";
 import { customer } from "./handlers/customer";
 import { receipt } from "./handlers/receipt";
 import { joinRequest } from "./handlers/joinRequest";
+import { channelMembership } from "./handlers/channelMembership";
+import { dynamicCommands } from "./handlers/dynamicCommands";
+import { builtinCommands, navigation } from "./handlers/navigation";
 import { review } from "./admin/review";
 import { adminCommands } from "./admin/commands";
+import { adminMenu } from "./admin/menu";
+import { adminsManage } from "./admin/adminsManage";
+import { accessGuard } from "./middleware/accessGuard";
+import { autoAnswerCallbacks } from "./middleware/autoAnswer";
+import { errorBoundary, handleBotError, RetryLaterError } from "./middleware/errorBoundary";
+import { identify } from "./middleware/identify";
+import { requestLog } from "./middleware/requestLog";
+import { throttle } from "./middleware/throttle";
 import { mainMenu, phoneKeyboard } from "./keyboards";
-import { alertTech, isBlockedError } from "./notify";
-import { t } from "../services/texts";
-import { listOpenOrders } from "../services/orders";
-import { getSettings } from "../services/settings";
-import { dynamicCommands } from "./handlers/dynamicCommands";
+import { homeScreen } from "./screens/home";
+import { render } from "./ui/render";
 import { installOutgoingLogger, logIncoming } from "./messageLog";
+import { listOpenOrders } from "../services/orders";
+import { telegramApiCalls } from "../lib/metrics";
 
-export function createBot(token: string): Bot<BotContext> {
-  const bot = new Bot<BotContext>(token);
+export type CreateBotOptions = Omit<BotConfig<BotContext>, "ContextConstructor">;
+
+/** Har bir Telegram API chaqiruvi natijasi metrikaga (xato kodi bo'yicha) */
+const apiMetrics: Transformer = async (prev, method, payload, signal) => {
+  try {
+    const res = await prev(method, payload, signal);
+    telegramApiCalls.inc({ method, result: res.ok ? "ok" : `error_${res.error_code}` });
+    return res;
+  } catch (err) {
+    telegramApiCalls.inc({ method, result: err instanceof HttpError ? "network" : err instanceof GrammyError ? `error_${err.error_code}` : "exception" });
+    throw err;
+  }
+};
+
+/**
+ * Parallel qayta ishlashda bitta chat (yoki chatsiz update da — foydalanuvchi) update lari
+ * ketma-ket bajariladi: tugmani tez-tez bosish yoki chek + matn aralashib ketmaydi.
+ */
+export const updateKey = (ctx: BotContext): string | undefined => (ctx.chat?.id ?? ctx.from?.id)?.toString();
+
+export function createBot(token: string, options: CreateBotOptions = {}): Bot<BotContext> {
+  const bot = new Bot<BotContext>(token, { ...options, ContextConstructor: BotContext });
+  // Transformerlar tartibi: oxirgi o'rnatilgani tashqi. autoRetry har urinishni metrikadan o'tkazadi,
+  // chiquvchi xabar logi esa faqat muvaffaqiyatli javobni bir marta yozadi
   installOutgoingLogger(bot.api);
+  bot.api.config.use(apiMetrics);
+  // 429 (flood) — retry_after qadar kutib qayta; tarmoq/5xx xatolari — exponential backoff bilan
+  bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60, rethrowInternalServerErrors: false }));
 
-  // Foydalanuvchi va admin huquqi — har bir update da qayta aniqlanadi
-  bot.use(async (ctx, next) => {
-    ctx.user = null;
-    ctx.admin = null;
-    if (ctx.from && !ctx.from.is_bot) {
-      ctx.admin = await getAdmin(ctx.from.id);
-      if (ctx.admin && ctx.admin.name !== ctx.from.first_name) {
-        ctx.admin = await prisma.admin.update({ where: { id: ctx.admin.id }, data: { name: ctx.from.first_name } });
-      }
-      if (ctx.chat?.type === "private") ctx.user = await upsertUser(ctx.from);
-    }
-    await next();
-  });
+  // --- Infratuzilma (tartib muhim) ---
+  bot.use(sequentialize(updateKey)); // bitta chat ichida tartib (parallel runner/webhook uchun)
+  bot.use(requestLog); // kontekstli log va davomiylik
+  bot.use(errorBoundary); // har qanday xato → log + foydalanuvchiga tushunarli xabar
+  bot.use(autoAnswerCallbacks); // inline tugmada "soat" aylanib qolmaydi
+  bot.use(throttle({ windowMs: 10_000, limit: 20 })); // spam — bazaga tegmasdan tashlanadi
+  bot.use(identify); // foydalanuvchi, admin, rol, til
 
   // Xabarlar tarixi (admin panel: Message History)
   bot.on("message", async (ctx, next) => {
-    await logIncoming(ctx.message);
+    await logIncoming(ctx.message, ctx.user?.id);
     await next();
   });
 
-  // Maintenance: oddiy foydalanuvchilarga xabar, adminlar ishlashda davom etadi
-  bot.use(async (ctx, next) => {
-    if (ctx.admin || ctx.chat?.type !== "private") return next();
-    const { maintenance_mode } = await getSettings();
-    if (!maintenance_mode) return next();
-    if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => undefined);
-    await ctx.reply(await t("maintenance"));
-  });
+  bot.use(accessGuard); // cheklangan foydalanuvchi va maintenance
 
-  // Tartib muhim: admin buyruqlari va tugmalari mijoz oqimidan oldin
+  // --- Handlerlar. Admin buyruqlari va tugmalari mijoz oqimidan oldin ---
   bot.use(adminCommands);
+  bot.use(adminMenu);
+  bot.use(adminsManage); // adminlarni qo'shish/o'zgartirish (ID kiritish kutilayotgan xabar ham shu yerda)
   bot.use(review);
   bot.use(joinRequest);
+  bot.use(channelMembership);
   bot.use(customer);
+  bot.use(navigation);
   bot.use(receipt);
   bot.use(dynamicCommands);
+  bot.use(builtinCommands);
 
-  // Qolgan matnlar (shaxsiy chat)
-  bot.chatType("private").on("message:text", async (ctx) => {
+  // --- Hech bir handler olmagan update lar ---
+  const pm = bot.chatType("private");
+
+  pm.on("message:text", async (ctx) => {
+    if (ctx.message.text.startsWith("/")) {
+      await ctx.reply(await ctx.t("error_unknown_command"), { reply_markup: mainMenu(ctx.lang, ctx.role) });
+      return;
+    }
     const user = ctx.user!;
     if (!user.phone) {
       // Qo'lda yozilgan raqam qabul qilinmaydi (TZ 5.2)
-      await ctx.reply(await t("phone_own_only"), { parse_mode: "HTML", reply_markup: phoneKeyboard() });
+      await ctx.reply(await ctx.t("phone_own_only"), { parse_mode: "HTML", reply_markup: phoneKeyboard(ctx.lang) });
       return;
     }
     const open = await listOpenOrders(user.id);
     if (open.some((o) => o.status === "new" || o.status === "rejected")) {
-      await ctx.reply(await t("receipt_invalid"));
+      await ctx.reply(await ctx.t("receipt_invalid"));
       return;
     }
     // 2-bosqich: "Savol berish" — support yozishma (TZ 7.4)
-    await ctx.reply(await t("choose_product", { ism: user.firstName ?? "" }), { parse_mode: "HTML", reply_markup: mainMenu() });
+    await render(ctx, await homeScreen(ctx));
   });
 
+  // Eskirgan yoki noma'lum tugma — foydalanuvchi nima bo'lganini tushunsin
+  bot.on("callback_query", async (ctx) => {
+    await ctx.answerCallbackQuery({ text: await ctx.t("error_stale_button"), show_alert: true });
+  });
+
+  // Oxirgi himoya chizig'i (masalan, errorBoundary ning o'zi xato bersa)
   bot.catch(async (err) => {
-    if (isBlockedError(err.error)) return;
-    logger.error({ err: err.error, update: err.ctx.update.update_id }, "bot xatosi");
-    await alertTech(err.ctx.api, String((err.error as Error)?.stack ?? err.error));
+    // Qayta yuborilishi kerak bo'lgan update — xato webhook javobiga chiqadi (Telegram retry qiladi)
+    if (err.error instanceof RetryLaterError) throw err.error;
+    await handleBotError(err.ctx, err.error);
   });
 
   return bot;

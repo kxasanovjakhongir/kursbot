@@ -83,3 +83,31 @@ export function startOfTashkentDay(date: Date = new Date()): Date {
   shifted.setUTCHours(0, 0, 0, 0);
   return new Date(shifted.getTime() - TASHKENT_OFFSET_MIN * 60_000);
 }
+
+/**
+ * Prisma `contains` (SQL LIKE) uchun: % va _ belgilari so'zma-so'z qidiriladi (aks holda "%" hammasini topadi).
+ * PostgreSQL LIKE da standart ekranlash belgisi — "\\".
+ */
+export function escapeLike(term: string): string {
+  return term.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/** "23.09.2026" (Toshkent vaqti) */
+export function formatDate(date: Date): string {
+  const t = toTashkent(date);
+  return `${pad(t.getUTCDate())}.${pad(t.getUTCMonth() + 1)}.${t.getUTCFullYear()}`;
+}
+
+/** HTML teglarini olib tashlab, oddiy matnga aylantiradi (qisqa ko'rinishlar uchun) */
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+/** Uzun matnni qisqartiradi: "Juda uzun ma…" */
+export function truncate(s: string, max: number): string {
+  return s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s;
+}

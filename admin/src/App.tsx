@@ -22,8 +22,11 @@ import BotSettingsPage from "./pages/BotSettingsPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ReceiptsPage from "./pages/ReceiptsPage";
+import LinksPage from "./pages/LinksPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 import ProductsPage from "./pages/ProductsPage";
 import CardsPage from "./pages/CardsPage";
+import ErrorsPage from "./pages/ErrorsPage";
 
 export default function App() {
   return (
@@ -42,12 +45,14 @@ export default function App() {
               }
             >
               <Route index element={<DashboardPage />} />
+              <Route path="analytics" element={<AnalyticsPage />} />
               <Route path="telegram-users" element={<TelegramUsersPage />} />
               <Route path="telegram-users/:id" element={<TelegramUserDetailPage />} />
               <Route path="messages" element={<MessagesPage />} />
               <Route path="receipts" element={<ReceiptsPage />} />
               <Route path="products" element={<RequireSuper><ProductsPage /></RequireSuper>} />
               <Route path="cards" element={<RequireSuper><CardsPage /></RequireSuper>} />
+              <Route path="links" element={<LinksPage />} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="orders/:id" element={<OrderDetailPage />} />
               <Route path="broadcast" element={<BroadcastPage />} />
@@ -57,6 +62,7 @@ export default function App() {
               <Route path="bot/menu" element={<BotMenuPage />} />
               <Route path="admins" element={<RequireSuper><AdminsPage /></RequireSuper>} />
               <Route path="activity-logs" element={<RequireSuper><ActivityLogsPage /></RequireSuper>} />
+              <Route path="errors" element={<RequireSuper><ErrorsPage /></RequireSuper>} />
               <Route path="bot/settings" element={<RequireSuper><BotSettingsPage /></RequireSuper>} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFoundPage />} />

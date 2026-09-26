@@ -2,14 +2,13 @@ import { useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { api } from "../lib/api";
-import { fmtDateTime, fmtNumber } from "../lib/format";
+import { AUDIENCE_LABEL, fmtDateTime, fmtNumber } from "../lib/format";
 import type { BroadcastDetail } from "../lib/types";
 import { useAsync } from "../hooks/useAsync";
 import { BroadcastStatusBadge, deliveryPct, ProgressBar } from "../components/BroadcastStats";
 import { AsyncView, Badge, Card, CardHeader, PageHeader, Table, Td, Th } from "../components/ui";
 
 const TYPE_LABEL = { text: "Matn", photo: "Rasm", video: "Video", document: "Hujjat", other: "Boshqa" } as const;
-const AUDIENCE = { all: "Barcha", active: "Faol", specific: "Tanlangan" } as const;
 
 export default function BroadcastDetailPage() {
   const { id = "" } = useParams();
@@ -57,7 +56,7 @@ export default function BroadcastDetailPage() {
                 <dl className="space-y-2.5 p-5 text-sm">
                   {[
                     ["Turi", TYPE_LABEL[b.messageType]],
-                    ["Auditoriya", AUDIENCE[b.audience]],
+                    ["Auditoriya", b.product ? `${AUDIENCE_LABEL[b.audience]}: ${b.product.title}` : AUDIENCE_LABEL[b.audience]],
                     ["Fayl", b.fileName ?? "—"],
                     ["Yaratgan", b.createdBy?.name ?? "—"],
                     ["Yaratilgan", fmtDateTime(b.createdAt)],

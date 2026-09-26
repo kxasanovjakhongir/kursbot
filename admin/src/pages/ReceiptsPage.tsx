@@ -1,15 +1,43 @@
-import { Link } from "react-router-dom";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AlertTriangle, RefreshCw, Search } from "lucide-react";
 import { api } from "../lib/api";
-import { fmtDateTime, fmtSum, fullName, timeAgo } from "../lib/format";
-import type { Paged, PendingOrder } from "../lib/types";
+import { fmtDateTime, fmtSum, fullName, ORDER_STATUS, timeAgo } from "../lib/format";
+import type { Paged, PendingOrder, ReceiptHistoryItem } from "../lib/types";
 import { useAsync } from "../hooks/useAsync";
 import { usePending } from "../context/PendingContext";
 import { ReceiptFile } from "../components/ReceiptFile";
 import { ReviewActions } from "../components/ReviewActions";
-import { AsyncView, Badge, Button, Card, EmptyState, PageHeader } from "../components/ui";
+import { AsyncView, Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Table, Td, Th } from "../components/ui";
+
+type Tab = "pending" | "history";
 
 export default function ReceiptsPage() {
+  const [params, setParams] = useSearchParams();
+  const tab: Tab = params.get("tab") === "history" ? "history" : "pending";
+  const { count } = usePending();
+
+  const tabCls = (t: Tab) =>
+    `-mb-px border-b-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+      tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+    }`;
+
+  return (
+    <>
+      <div className="mb-6 flex gap-1 border-b border-gray-200">
+        <button className={tabCls("pending")} onClick={() => setParams({})}>
+          Kutilayotgan{count > 0 && <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-xs font-semibold text-white">{count}</span>}
+        </button>
+        <button className={tabCls("history")} onClick={() => setParams({ tab: "history" })}>
+          Tarix
+        </button>
+      </div>
+      {tab === "pending" ? <PendingReceipts /> : <ReceiptsHistory />}
+    </>
+  );
+}
+
+function PendingReceipts() {
   const pending = usePending();
   const list = useAsync(
     () => api.get<Paged<PendingOrder>>("/orders", { params: { status: "receipt_sent", pageSize: 50 } }).then((r) => r.data),
@@ -104,6 +132,120 @@ export default function ReceiptsPage() {
           )
         }
       </AsyncView>
+    </>
+  );
+}
+
+const RESULTS = [
+  { value: "all", label: "Barcha natijalar" },
+  { value: "approved", label: "Tasdiqlangan" },
+  { value: "rejected", label: "Rad etilgan" },
+  { value: "cancelled", label: "Bekor qilingan" },
+] as const;
+
+/** Ko'rib chiqilgan cheklar — kim, qachon, qanday qaror qilgani bilan */
+function ReceiptsHistory() {
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const result = params.get("result") ?? "all";
+  const q = params.get("q") ?? "";
+  const page = Number(params.get("page") ?? 1);
+  const [search, setSearch] = useState(q);
+
+  const list = useAsync(
+    () => api.get<Paged<ReceiptHistoryItem>>("/orders/receipts/history", { params: { result, q: q || undefined, page } }).then((r) => r.data),
+    [result, q, page],
+  );
+
+  const set = (patch: Record<string, string>) => {
+    const next = new URLSearchParams(params);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v) next.set(k, v);
+      else next.delete(k);
+    }
+    if (!("page" in patch)) next.delete("page");
+    setParams(next);
+  };
+  const onSearch = (e: FormEvent) => {
+    e.preventDefault();
+    set({ q: search.trim() });
+  };
+
+  return (
+    <>
+      <PageHeader title="Cheklar tarixi" subtitle="Tasdiqlangan, rad etilgan va bekor qilingan cheklar. Qatorni bosing — chek rasmi va tafsilotlar" />
+      <Card>
+        <div className="flex flex-col gap-3 border-b border-gray-100 p-4 sm:flex-row">
+          <Select className="sm:w-56" value={result} onChange={(e) => set({ result: e.target.value === "all" ? "" : e.target.value })}>
+            {RESULTS.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+          <form onSubmit={onSearch} className="flex flex-1 gap-2">
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buyurtma #, mijoz ismi, @username, telefon yoki kurs" />
+            <Button type="submit" variant="secondary">
+              <Search className="h-4 w-4" />
+            </Button>
+          </form>
+        </div>
+        <AsyncView state={list}>
+          {(d) =>
+            d.items.length === 0 ? (
+              <EmptyState title="Cheklar topilmadi" hint={q || result !== "all" ? "Filtrni o'zgartirib ko'ring" : "Ko'rib chiqilgan cheklar shu yerda saqlanadi"} />
+            ) : (
+              <>
+                <Table
+                  head={
+                    <tr>
+                      <Th>#</Th>
+                      <Th>Mijoz</Th>
+                      <Th>Kurs</Th>
+                      <Th>Summa</Th>
+                      <Th>Natija</Th>
+                      <Th className="hidden lg:table-cell">Ko'rib chiqqan</Th>
+                      <Th className="hidden md:table-cell">Chek yuborilgan</Th>
+                    </tr>
+                  }
+                >
+                  {d.items.map((o) => {
+                    const st = ORDER_STATUS[o.status];
+                    const reviewer = o.cancelledBy?.name ?? (o.reviewedByPanel ? `${o.reviewedByPanel.name} (panel)` : (o.reviewedBy?.name ?? null));
+                    const reviewedAt = o.cancelledAt ?? o.reviewedAt;
+                    const note = o.cancelReason ?? (o.paidAt ? null : o.rejectReason);
+                    return (
+                      <tr key={o.id} className="cursor-pointer hover:bg-gray-50" onClick={() => navigate(`/orders/${o.id}`)}>
+                        <Td className="font-medium text-blue-600">#{o.id}</Td>
+                        <Td className="whitespace-nowrap">
+                          {fullName(o.user)}
+                          <div className="text-xs text-gray-500">{o.user.phone ?? (o.user.username ? `@${o.user.username}` : "")}</div>
+                        </Td>
+                        <Td>{o.product.title}</Td>
+                        <Td className="whitespace-nowrap tabular-nums">{fmtSum(o.amount)}</Td>
+                        <Td>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge tone={st?.tone ?? "gray"}>{st?.label ?? o.status}</Badge>
+                            {o.receipts.some((r) => r.isDuplicate) && <Badge tone="red">Dublikat</Badge>}
+                            {o.receipts.length > 1 && <Badge tone="yellow">{o.receipts.length} ta chek</Badge>}
+                          </div>
+                          {note && <div className="mt-1 max-w-xs truncate text-xs text-gray-500" title={note}>{note}</div>}
+                        </Td>
+                        <Td className="hidden whitespace-nowrap text-gray-600 lg:table-cell">
+                          {reviewer ?? "—"}
+                          <div className="text-xs text-gray-500">{fmtDateTime(reviewedAt)}</div>
+                        </Td>
+                        <Td className="hidden whitespace-nowrap text-gray-500 md:table-cell">{fmtDateTime(o.receipts[0]?.createdAt)}</Td>
+                      </tr>
+                    );
+                  })}
+                </Table>
+                <Pagination page={d.page} pages={d.pages} total={d.total} onPage={(p) => set({ page: String(p) })} />
+              </>
+            )
+          }
+        </AsyncView>
+      </Card>
     </>
   );
 }

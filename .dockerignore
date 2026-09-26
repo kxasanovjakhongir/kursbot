@@ -1,8 +1,22 @@
-node_modules
-dist
+# Secret'lar image'ga hech qachon tushmaydi (.env.example bundan mustasno — shablon)
 .env
-.git
-tests
-admin/node_modules
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+# Build natijalari va bog'liqliklar (image ichida qaytadan yig'iladi)
+node_modules
+**/node_modules
+dist
 admin/dist
+webapp/dist
+# Keraksizlar
+.git
+.github
+tests
+coverage
 .pgdata
+backups
+*.log
+deploy

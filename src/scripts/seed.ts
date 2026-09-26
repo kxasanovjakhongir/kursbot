@@ -24,6 +24,8 @@ async function main() {
     { name: "XARIDLAR", command: "purchases", description: "Mening xaridlarim", order: 2 },
     { name: "HELP", command: "help", description: "Yordam", order: 3 },
     { name: "CONTACT", command: "contact", description: "Bog'lanish", order: 4 },
+    { name: "PROFIL", command: "profile", description: "Profil", order: 5 },
+    { name: "SOZLAMALAR", command: "settings", description: "Sozlamalar (til, yangiliklar)", order: 6 },
   ];
   for (const m of menu) await prisma.botMenuItem.upsert({ where: { command: m.command }, create: m, update: {} });
 
@@ -33,7 +35,7 @@ async function main() {
       command: "help",
       description: "Yordam",
       response:
-        "Sizga yordam berish uchun:\n• /start — darsliklar ro'yxati\n• /purchases — mening xaridlarim\n• /contact — admin bilan bog'lanish",
+        "Sizga yordam berish uchun:\n• /start — darsliklar ro'yxati\n• /purchases — mening xaridlarim\n• /profile — profil\n• /settings — til va sozlamalar\n• /contact — admin bilan bog'lanish",
     },
     { command: "about", description: "Biz haqimizda", response: "Biz darsliklarni Telegram yopiq kanallari orqali taqdim etamiz." },
     { command: "contact", description: "Bog'lanish", response: "Savollar bo'yicha adminga yozing." },

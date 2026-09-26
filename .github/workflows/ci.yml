@@ -1,5 +1,11 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -25,7 +31,73 @@ jobs:
       - run: npx prisma generate
       - run: npx prisma migrate deploy
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       - run: npm run build
       - run: npm --prefix admin ci
       - run: npm --prefix admin run build
+      - run: npm --prefix webapp ci
+      - run: npm --prefix webapp run lint
+      - run: npm --prefix webapp run build
+
+  # Xavfsizlik: production bog'liqliklarida critical zaiflik bo'lsa — to'xtatadi (hisobot har doim chiqadi)
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev || true
+      - run: npm audit --omit=dev --audit-level=critical
+      - run: npm --prefix admin ci && npm --prefix admin audit --omit=dev --audit-level=high
+      - run: npm --prefix webapp ci && npm --prefix webapp audit --omit=dev --audit-level=high
+
+  # Deploy skriptlari va nginx konfiguratsiyasi
+  ops:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: shellcheck -x -S warning deploy/*.sh
+      - name: nginx -t (vaqtinchalik sertifikat bilan)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq nginx >/dev/null
+          T="$(mktemp -d)"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj "/CN=ci" -keyout "$T/key.pem" -out "$T/cert.pem" 2>/dev/null
+          sed -e "s#/etc/letsencrypt/live/bot.example.uz/fullchain.pem#$T/cert.pem#" \
+              -e "s#/etc/letsencrypt/live/bot.example.uz/privkey.pem#$T/key.pem#" deploy/nginx/darslik-bot.conf > "$T/site.conf"
+          printf 'events {}\nhttp { include %s/site.conf; }\n' "$T" > "$T/nginx.conf"
+          sudo nginx -t -c "$T/nginx.conf"
+
+  # Production image yig'iladimi (runtime va migrate), root emasligi va healthcheck bor-yo'qligi
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build runtime
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          load: true
+          tags: darslik-bot:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build migrate
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: migrate
+          load: true
+          tags: darslik-bot-migrate:ci
+          cache-from: type=gha
+      - name: Image tekshiruvi
+        run: |
+          test "$(docker image inspect darslik-bot:ci --format '{{.Config.User}}')" = "node"
+          docker image inspect darslik-bot:ci --format '{{json .Config.Healthcheck}}' | grep -q ready
+          docker run --rm --entrypoint sh darslik-bot:ci -c 'test ! -e .env && test -f dist/index.js && test -f admin/dist/index.html && test -f webapp/dist/index.html'
+          docker image ls darslik-bot:ci --format 'Hajmi: {{.Size}}'
+

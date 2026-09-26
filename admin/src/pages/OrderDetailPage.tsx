@@ -7,6 +7,7 @@ import { useAsync } from "../hooks/useAsync";
 import { AsyncView, Badge, Card, CardHeader, PageHeader } from "../components/ui";
 import { ReceiptFile } from "../components/ReceiptFile";
 import { ReviewActions } from "../components/ReviewActions";
+import { CancelOrder } from "../components/CancelOrder";
 
 export default function OrderDetailPage() {
   const { id = "" } = useParams();
@@ -23,7 +24,12 @@ export default function OrderDetailPage() {
             <PageHeader
               title={`Buyurtma #${o.id}`}
               subtitle={o.product.title}
-              action={<Badge tone={ORDER_STATUS[o.status]?.tone ?? "gray"}>{ORDER_STATUS[o.status]?.label ?? o.status}</Badge>}
+              action={
+                <div className="flex flex-wrap items-center gap-3">
+                  <Badge tone={ORDER_STATUS[o.status]?.tone ?? "gray"}>{ORDER_STATUS[o.status]?.label ?? o.status}</Badge>
+                  <CancelOrder orderId={o.id} status={o.status} onDone={order.reload} />
+                </div>
+              }
             />
             <div className="grid gap-6 lg:grid-cols-3">
               <Card>
@@ -41,6 +47,12 @@ export default function OrderDetailPage() {
                     ["To'langan", fmtDateTime(o.paidAt)],
                     ["Ko'rib chiqqan", o.reviewedByPanel || o.reviewedBy?.name ? `${o.reviewedByPanel ? `${o.reviewedByPanel.name} (panel)` : o.reviewedBy?.name}, ${fmtDateTime(o.reviewedAt)}` : "—"],
                     ["Rad etish sababi", o.rejectReason ?? "—"],
+                    ...(o.cancelledAt
+                      ? [
+                          ["Bekor qilgan", `${o.cancelledBy?.name ?? "—"}, ${fmtDateTime(o.cancelledAt)}`],
+                          ["Bekor qilish sababi", o.cancelReason ?? "—"],
+                        ]
+                      : []),
                   ].map(([k, v]) => (
                     <div key={String(k)} className="flex justify-between gap-4">
                       <dt className="text-gray-500">{k}</dt>

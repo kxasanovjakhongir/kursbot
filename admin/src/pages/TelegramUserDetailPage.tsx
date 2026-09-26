@@ -6,6 +6,9 @@ import { fmtDateTime, fmtSum, fullName, ORDER_STATUS } from "../lib/format";
 import type { ChatMessage, Paged, TelegramUserDetail } from "../lib/types";
 import { useAsync } from "../hooks/useAsync";
 import { MessageTable } from "../components/MessageTable";
+import { UserActions } from "../components/UserActions";
+import { UserGrants } from "../components/UserGrants";
+import { UserStatus } from "../components/UserStatus";
 import { AsyncView, Badge, Card, CardHeader, EmptyState, PageHeader, Pagination, Table, Td, Th } from "../components/ui";
 
 function Info({ label, children }: { label: string; children: React.ReactNode }) {
@@ -37,7 +40,12 @@ export default function TelegramUserDetailPage() {
             <PageHeader
               title={fullName(u)}
               subtitle={u.username ? `@${u.username}` : undefined}
-              action={u.isBlocked ? <Badge tone="red">Bloklagan</Badge> : <Badge tone="green">Faol</Badge>}
+              action={
+                <div className="flex flex-wrap items-center gap-3">
+                  <UserStatus user={u} />
+                  <UserActions user={u} onChanged={() => { user.reload(); messages.reload(); }} />
+                </div>
+              }
             />
             <div className="grid gap-6 lg:grid-cols-3">
               <Card className="lg:col-span-2">
@@ -49,30 +57,24 @@ export default function TelegramUserDetailPage() {
                   <Info label="Username">{u.username ? `@${u.username}` : "—"}</Info>
                   <Info label="Ism">{u.firstName ?? "—"}</Info>
                   <Info label="Familiya">{u.lastName ?? "—"}</Info>
-                  <Info label="Til">{u.languageCode?.toUpperCase() ?? "—"}</Info>
+                  <Info label="Til (bot / Telegram)">
+                    {(u.language ?? "—").toUpperCase()} / {u.languageCode?.toUpperCase() ?? "—"}
+                  </Info>
                   <Info label="Telefon">
                     {u.phone ?? "—"} {u.isForeign && <Badge tone="yellow">xorijiy</Badge>}
                   </Info>
                   <Info label="Qo'shilgan">{fmtDateTime(u.createdAt)}</Info>
                   <Info label="Oxirgi faollik">{fmtDateTime(u.lastSeenAt)}</Info>
                   <Info label="Manba (birinchi)">{u.firstSource ?? "—"}</Info>
+                  <Info label="Yangiliklar">{u.newsEnabled ? "Obuna" : "O'chirgan"}</Info>
+                  <Info label="Bildirishnomalar">{u._count.notifications}</Info>
+                  {u.isBanned && <Info label="Cheklangan">{fmtDateTime(u.bannedAt)}</Info>}
                 </dl>
               </Card>
               <Card>
-                <CardHeader title="Xaridlar" />
+                <CardHeader title="Yopiq kanallar" subtitle="Muddat tugasa, bot avtomatik chiqaradi" />
                 <div className="p-5">
-                  {u.grants.length === 0 ? (
-                    <p className="text-sm text-gray-500">Xaridlar yo'q</p>
-                  ) : (
-                    <ul className="space-y-2 text-sm">
-                      {u.grants.map((g) => (
-                        <li key={g.id} className="flex items-center justify-between gap-2">
-                          <span>{g.product.title}</span>
-                          {g.joinedAt ? <Badge tone="green">Kanalda</Badge> : <Badge tone="yellow">Kirmagan</Badge>}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <UserGrants user={u} onChanged={user.reload} />
                 </div>
               </Card>
             </div>

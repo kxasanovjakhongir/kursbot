@@ -1,41 +1,82 @@
+# Production: nginx (serverda, TLS) → app (127.0.0.1:8080) → db. Batafsil: deploy/DEPLOY.md
+#
+#   docker compose build
+#   docker compose run --rm migrate        # migratsiyalar (deploy skripti o'zi chaqiradi)
+#   docker compose up -d
+#
+# Image tegi: APP_IMAGE (deploy.sh har versiyaga git commit bo'yicha teg beradi — rollback uchun)
+
+x-logging: &logging
+  # Loglar diskni to'ldirmasligi uchun aylantiriladi (har konteynerga ko'pi bilan 5 × 20 MB)
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
-  bot:
-    build: .
-    env_file: .env
+  app:
+    image: ${APP_IMAGE:-darslik-bot:latest}
+    build:
+      context: .
+      target: runtime
+    env_file: .env.production
     environment:
-      DATABASE_URL: postgresql://bot:${POSTGRES_PASSWORD:-bot}@db:5432/darslik_bot
-      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://bot:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env.production da majburiy}@db:5432/darslik_bot
       BOT_MODE: webhook
+      NODE_ENV: production
     ports:
+      # Faqat serverning o'zidan (nginx) — tashqaridan to'g'ridan-to'g'ri ochilmaydi
       - "127.0.0.1:8080:8080"
     depends_on:
       db:
         condition: service_healthy
-      redis:
-        condition: service_started
     restart: unless-stopped
+    # Graceful shutdown (SHUTDOWN_TIMEOUT_MS=15s) tugashi uchun — Docker standarti (10s) SIGKILL qilib qo'yardi
+    stop_grace_period: 25s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    mem_limit: 768m
+    cpus: 1.5
+    logging: *logging
+
+  # Migratsiya — alohida bir martalik konteyner (app ishga tushishida emas):
+  # rollback paytida eski versiya migratsiyani qaytadan ishga tushirmaydi
+  migrate:
+    image: ${APP_IMAGE_MIGRATE:-darslik-bot-migrate:latest}
+    build:
+      context: .
+      target: migrate
+    environment:
+      DATABASE_URL: postgresql://bot:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env.production da majburiy}@db:5432/darslik_bot
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["tools"]
+    restart: "no"
+    logging: *logging
 
   db:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: bot
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env.production da majburiy}
       POSTGRES_DB: darslik_bot
+    # Port tashqariga ochilmaydi — faqat app va backup (ichki tarmoq)
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bot -d darslik_bot"]
       interval: 5s
+      timeout: 5s
       retries: 10
     restart: unless-stopped
-
-  # 2-bosqich: BullMQ (eslatmalar, SLA taymerlari, ommaviy xabar)
-  redis:
-    image: redis:7-alpine
-    volumes:
-      - redisdata:/data
-    restart: unless-stopped
+    shm_size: 256m
+    mem_limit: 1g
+    logging: *logging
 
 volumes:
   pgdata:
-  redisdata:

@@ -1,3 +1,5 @@
+import type { Audience } from "./types";
+
 const TZ = "Asia/Tashkent";
 
 const dateTimeFmt = new Intl.DateTimeFormat("ru-RU", {
@@ -39,4 +41,14 @@ export const ORDER_STATUS: Record<string, { label: string; tone: "green" | "red"
   expired: { label: "Muddati o'tgan", tone: "gray" },
   cancelled: { label: "Bekor qilingan", tone: "gray" },
   refunded: { label: "Pul qaytarilgan", tone: "gray" },
+};
+
+export const AUDIENCE_LABEL: Record<Audience, string> = {
+  active: "Faol foydalanuvchilar",
+  all: "Barcha foydalanuvchilar",
+  buyers: "Xaridorlar",
+  non_buyers: "Hali xarid qilmaganlar",
+  product: "Mahsulot egalari",
+  admins: "Telegram adminlari",
+  specific: "Tanlangan foydalanuvchilar",
 };

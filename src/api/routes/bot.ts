@@ -5,7 +5,7 @@ import { prisma } from "../../db";
 import { logActivity } from "../../services/activity";
 import { saveBotToken } from "../../services/botToken";
 import { getSettings, setSetting } from "../../services/settings";
-import { currentUser, requireSuperAdmin } from "../auth";
+import { currentUser, requirePermission } from "../auth";
 import { HttpError } from "../errors";
 import type { BotRuntime } from "../runtime";
 import { clientIp, parseBody } from "../validate";
@@ -58,7 +58,7 @@ export function botRouter(rt: BotRuntime): Router {
   });
 
   // ---------- Faqat SUPER_ADMIN ----------
-  r.get("/settings", requireSuperAdmin, async (_req, res) => {
+  r.get("/settings", requirePermission("settings.manage"), async (_req, res) => {
     const s = await getSettings();
     const me = await rt.api.getMe();
     res.json({
@@ -84,7 +84,7 @@ export function botRouter(rt: BotRuntime): Router {
     workEnd: hm.optional(),
   });
 
-  r.put("/settings", requireSuperAdmin, async (req, res) => {
+  r.put("/settings", requirePermission("settings.manage"), async (req, res) => {
     const body = parseBody(settingsSchema, req);
     const changed: string[] = [];
     if (body.botName !== undefined) {
@@ -114,14 +114,14 @@ export function botRouter(rt: BotRuntime): Router {
     res.json({ ok: true });
   });
 
-  r.put("/maintenance", requireSuperAdmin, async (req, res) => {
+  r.put("/maintenance", requirePermission("settings.manage"), async (req, res) => {
     const { enabled } = parseBody(z.object({ enabled: z.boolean() }), req);
     await setSetting("maintenance_mode", enabled);
     await logActivity(currentUser(req).id, "UPDATE_MAINTENANCE", `Maintenance mode: ${enabled ? "ON" : "OFF"}`, clientIp(req));
     res.json({ maintenance: enabled });
   });
 
-  r.put("/token", requireSuperAdmin, async (req, res) => {
+  r.put("/token", requirePermission("settings.manage"), async (req, res) => {
     const { token } = parseBody(z.object({ token: z.string().trim().regex(/^\d+:[\w-]{30,}$/, "Token formati noto'g'ri") }), req);
     let username: string | undefined;
     try {

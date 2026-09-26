@@ -248,11 +248,14 @@ export function Table({ head, children }: { head: ReactNode; children: ReactNode
   );
 }
 
-export const Th = ({ children, className = "" }: { children?: ReactNode; className?: string }) => (
-  <th className={`whitespace-nowrap px-4 py-3 ${className}`}>{children}</th>
+/** title — ustun izohi (sichqoncha ustiga olib borilganda) */
+export const Th = ({ children, className = "", title }: { children?: ReactNode; className?: string; title?: string }) => (
+  <th className={`whitespace-nowrap px-3 py-3 ${title ? "cursor-help" : ""} ${className}`} title={title}>
+    {children}
+  </th>
 );
 export const Td = ({ children, className = "" }: { children?: ReactNode; className?: string }) => (
-  <td className={`px-4 py-3 align-middle ${className}`}>{children}</td>
+  <td className={`px-3 py-3 align-middle ${className}`}>{children}</td>
 );
 
 export function Pagination({ page, pages, total, onPage }: { page: number; pages: number; total: number; onPage: (p: number) => void }) {

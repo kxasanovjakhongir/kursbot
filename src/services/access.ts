@@ -1,5 +1,5 @@
 import type { Api } from "grammy";
-import type { AccessGrant, Order, Product } from "@prisma/client";
+import type { AccessGrant, Order, Product, User } from "@prisma/client";
 import { prisma } from "../db";
 import { logger } from "../lib/logger";
 import { componentProducts } from "./products";
@@ -71,7 +71,11 @@ export async function refreshInviteLink(api: Api, grantId: bigint, userTgId: big
   if (grant.inviteLink && grant.product.channelId) {
     await api.revokeChatInviteLink(Number(grant.product.channelId), grant.inviteLink).catch(() => undefined);
   }
-  const link = await createInviteLink(api, grant.product, grant.orderId, userTgId);
+  // Bot kanal huquqini yo'qotgan bo'lsa — null (mijozga "admin bilan bog'laning", adminlar xatoni panelda ko'radi)
+  const link = await createInviteLink(api, grant.product, grant.orderId, userTgId).catch((err: unknown) => {
+    logger.error({ err, grantId: grantId.toString(), productId: grant.productId }, "kanal linki yangilanmadi");
+    return null;
+  });
   if (!link) return null;
   return prisma.accessGrant.update({
     where: { id: grant.id },
@@ -80,9 +84,11 @@ export async function refreshInviteLink(api: Api, grantId: bigint, userTgId: big
   });
 }
 
+export type GrantWithOwner = GrantWithProduct & { user: User };
+
 export type JoinDecision =
-  | { kind: "approve"; grant: GrantWithProduct; orderJoined: boolean }
-  | { kind: "decline"; reason: "unknown_link" | "foreign_user" | "revoked" | "expired"; grant: GrantWithProduct | null };
+  | { kind: "approve"; grant: GrantWithOwner; orderJoined: boolean }
+  | { kind: "decline"; reason: "unknown_link" | "foreign_user" | "revoked" | "expired"; grant: GrantWithOwner | null };
 
 /**
  * Qo'shilish so'rovi: so'rov yuborgan odam ID si link egasi bilan mos bo'lsagina qabul (TZ 5.7, BR-15, BR-16).
@@ -96,7 +102,7 @@ export async function decideJoinRequest(inviteLink: string | undefined, fromTgId
   });
   if (!grant) return { kind: "decline", reason: "unknown_link", grant: null };
   if (grant.user.telegramId !== fromTgId) return { kind: "decline", reason: "foreign_user", grant };
-  if (grant.revokedAt) return { kind: "decline", reason: "revoked", grant };
+  if (grant.revokedAt || grant.user.isBanned) return { kind: "decline", reason: "revoked", grant };
   if (grant.expiresAt && grant.expiresAt < new Date()) return { kind: "decline", reason: "expired", grant };
 
   await prisma.accessGrant.update({ where: { id: grant.id }, data: { joinedAt: new Date() } });

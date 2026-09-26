@@ -91,7 +91,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
                   <Stat label="Jami foydalanuvchilar" value={fmtNumber(s.users.total)} icon={Users} />
                   <Stat label="Faol" value={fmtNumber(s.users.active)} icon={UserCheck} tone="green" hint={`30 kunda faol: ${fmtNumber(s.users.active30d)}`} />
-                  <Stat label="Bloklagan" value={fmtNumber(s.users.blocked)} icon={Ban} tone="red" />
+                  <Stat label="Botni bloklagan" value={fmtNumber(s.users.blocked)} icon={Ban} tone="red" hint={`Admin cheklagan: ${fmtNumber(s.users.banned)}`} />
                   <Stat label="Bugun yangi" value={fmtNumber(s.users.newToday)} icon={UserPlus} tone="amber" />
                   <Stat label="Shu hafta yangi" value={fmtNumber(s.users.newWeek)} icon={UserPlus} hint="Oxirgi 7 kun" />
                   <Stat label="Shu oy yangi" value={fmtNumber(s.users.newMonth)} icon={UserPlus} hint="Oxirgi 30 kun" />

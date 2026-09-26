@@ -23,3 +23,20 @@ export function normalizeCommand(raw: string): string {
 }
 
 export const COMMAND_RE = /^[a-z0-9_]{1,32}$/;
+
+/**
+ * Chatdagi "Menu" tugmasi: WEB_APP_URL bo'lsa — Mini App ni ochadi, bo'lmasa — buyruqlar ro'yxati.
+ * Faqat bizning web_app tugmamiz olib tashlanadi (BotFather'dagi boshqa sozlamaga tegilmaydi).
+ */
+export async function syncMenuButton(api: Api, webAppUrl: string | undefined, text: string): Promise<void> {
+  try {
+    if (webAppUrl) {
+      await api.setChatMenuButton({ menu_button: { type: "web_app", text, web_app: { url: webAppUrl } } });
+      return;
+    }
+    const current = await api.getChatMenuButton();
+    if (current.type === "web_app") await api.setChatMenuButton({ menu_button: { type: "commands" } });
+  } catch (err) {
+    logger.error({ err }, "Menu tugmasi sozlanmadi");
+  }
+}

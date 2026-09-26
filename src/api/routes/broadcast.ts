@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { safeFileName, sniffFileType } from "../../lib/fileType";
 import multer from "multer";
 import { z } from "zod";
 import { prisma } from "../../db";
@@ -20,21 +21,41 @@ const MIME_BY_TYPE = {
 
 const splitRecipients = (s: string | undefined) => (s ?? "").split(/[\s,;]+/).filter(Boolean);
 
-const createSchema = z.object({
-  messageType: z.enum(["text", "photo", "video", "document"]),
-  text: z.string().max(4096).optional(),
-  audience: z.enum(["all", "active", "specific"]),
-  recipients: z.string().max(20_000).optional(),
-  idempotencyKey: z.string().uuid(),
-});
+const AUDIENCES = ["all", "active", "specific", "buyers", "non_buyers", "admins", "product"] as const;
+
+const audienceSchema = z
+  .object({
+    audience: z.enum(AUDIENCES),
+    recipients: z.string().max(20_000).optional(),
+    productId: z.coerce.number().int().positive().optional(),
+  })
+  .refine((v) => v.audience !== "product" || v.productId !== undefined, { message: "Mahsulotni tanlang", path: ["productId"] });
+
+const createSchema = audienceSchema.and(
+  z.object({
+    messageType: z.enum(["text", "photo", "video", "document"]),
+    text: z.string().max(4096).optional(),
+    idempotencyKey: z.string().uuid(),
+  }),
+);
 
 export function broadcastRouter(rt: BotRuntime): Router {
   const r = Router();
 
+  /** "Mahsulot egalari" auditoriyasi uchun tanlov ro'yxati (ADMIN ham ko'radi — narx va kanalsiz) */
+  r.get("/products", async (_req, res) => {
+    res.json(await prisma.product.findMany({ where: { deletedAt: null }, select: { id: true, title: true }, orderBy: [{ sortOrder: "asc" }, { id: "asc" }] }));
+  });
+
   /** Tasdiqlash oynasi uchun: "5 240 ta foydalanuvchiga yuborilsinmi?" */
   r.get("/recipients-count", async (req, res) => {
-    const q = parseQuery(z.object({ audience: z.enum(["all", "active", "specific"]), recipients: z.string().max(20_000).optional() }), req);
-    res.json(await countRecipients(q.audience, splitRecipients(q.recipients)));
+    const q = parseQuery(audienceSchema, req);
+    try {
+      res.json(await countRecipients({ audience: q.audience, recipients: splitRecipients(q.recipients), productId: q.productId ?? null }));
+    } catch (err) {
+      if (err instanceof BroadcastInputError) throw new HttpError(400, err.message);
+      throw err;
+    }
   });
 
   r.post("/", upload.single("file"), async (req, res) => {
@@ -47,24 +68,29 @@ export function broadcastRouter(rt: BotRuntime): Router {
     if (body.messageType !== "text") {
       if (!file) throw new HttpError(400, "Fayl yuklanmagan");
       if (!MIME_BY_TYPE[body.messageType].test(file.mimetype)) throw new HttpError(400, `Fayl turi mos emas: ${file.mimetype}`);
+      // Rasm va video mazmuni ham tekshiriladi (hujjat — istalgan tur)
+      const kind = sniffFileType(file.buffer);
+      if (body.messageType === "photo" && kind !== "jpeg" && kind !== "png" && kind !== "webp") throw new HttpError(400, "Fayl rasm emas");
+      if (body.messageType === "video" && kind !== "mp4" && kind !== "webm") throw new HttpError(400, "Fayl video emas");
     }
     if (body.audience === "specific" && splitRecipients(body.recipients).length === 0) {
       throw new HttpError(400, "Qabul qiluvchilarni kiriting (Telegram ID yoki @username)");
     }
 
     try {
-      const { broadcast, created, notFound } = await createBroadcast({
+      const { broadcast, created, notFound } = await createBroadcast(rt.api, {
         messageType: body.messageType,
         text: body.text ?? null,
         audience: body.audience,
         recipients: splitRecipients(body.recipients),
+        productId: body.productId ?? null,
         idempotencyKey: body.idempotencyKey,
         createdById: me.id,
-        media: file && body.messageType !== "text" ? { buffer: file.buffer, fileName: file.originalname } : null,
+        media: file && body.messageType !== "text" ? { buffer: file.buffer, fileName: safeFileName(file.originalname, "file") } : null,
       });
       if (created) {
         await logActivity(me.id, "CREATE_BROADCAST", `Broadcast #${broadcast.id} yaratildi (${broadcast.total} ta)`, clientIp(req));
-        enqueueBroadcast(rt.api, broadcast.id);
+        enqueueBroadcast(rt.api);
         await logActivity(me.id, "SEND_BROADCAST", `Broadcast #${broadcast.id} yuborish navbatiga qo'yildi`, clientIp(req));
       }
       res.status(created ? 201 : 200).json({ broadcast, created, notFound });
@@ -81,7 +107,7 @@ export function broadcastRouter(rt: BotRuntime): Router {
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
-        include: { createdBy: { select: { id: true, name: true } } },
+        include: { createdBy: { select: { id: true, name: true } }, product: { select: { id: true, title: true } } },
       }),
       prisma.broadcast.count(),
     ]);
@@ -92,7 +118,7 @@ export function broadcastRouter(rt: BotRuntime): Router {
     const id = parseId(req.params.id);
     const broadcast = await prisma.broadcast.findUnique({
       where: { id },
-      include: { createdBy: { select: { id: true, name: true } } },
+      include: { createdBy: { select: { id: true, name: true } }, product: { select: { id: true, title: true } } },
     });
     if (!broadcast) throw new HttpError(404, "Broadcast topilmadi");
     const failures = await prisma.broadcastRecipient.findMany({

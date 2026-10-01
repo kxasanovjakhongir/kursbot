@@ -376,3 +376,33 @@ export interface Analytics {
   sources: AnalyticsSegment[];
   campaigns: AnalyticsSegment[];
 }
+
+// ---------- Kurs darslari (videolar) ----------
+
+export interface LessonCourse {
+  id: number;
+  code: string;
+  title: string;
+  isActive: boolean;
+  lessons: number;
+}
+
+export interface Lesson {
+  id: number;
+  productId: number;
+  title: string;
+  caption: string | null;
+  description: string | null;
+  mediaType: "video" | "document";
+  fileName: string | null;
+  mimeType: string | null;
+  /** Bayt (BigInt — satr sifatida) */
+  fileSize: string | null;
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  product: { title: string };
+}

@@ -27,6 +27,7 @@ import AnalyticsPage from "./pages/AnalyticsPage";
 import ProductsPage from "./pages/ProductsPage";
 import CardsPage from "./pages/CardsPage";
 import ErrorsPage from "./pages/ErrorsPage";
+import LessonsPage from "./pages/LessonsPage";
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ export default function App() {
               <Route path="messages" element={<MessagesPage />} />
               <Route path="receipts" element={<ReceiptsPage />} />
               <Route path="products" element={<RequireSuper><ProductsPage /></RequireSuper>} />
+              <Route path="lessons" element={<LessonsPage />} />
               <Route path="cards" element={<RequireSuper><CardsPage /></RequireSuper>} />
               <Route path="links" element={<LinksPage />} />
               <Route path="orders" element={<OrdersPage />} />

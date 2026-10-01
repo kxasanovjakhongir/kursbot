@@ -12,6 +12,8 @@ import { review } from "./admin/review";
 import { adminCommands } from "./admin/commands";
 import { adminMenu } from "./admin/menu";
 import { adminsManage } from "./admin/adminsManage";
+import { adminLessons } from "./admin/lessons";
+import { adminExport } from "./admin/export";
 import { accessGuard } from "./middleware/accessGuard";
 import { autoAnswerCallbacks } from "./middleware/autoAnswer";
 import { errorBoundary, handleBotError, RetryLaterError } from "./middleware/errorBoundary";
@@ -74,6 +76,8 @@ export function createBot(token: string, options: CreateBotOptions = {}): Bot<Bo
   bot.use(adminCommands);
   bot.use(adminMenu);
   bot.use(adminsManage); // adminlarni qo'shish/o'zgartirish (ID kiritish kutilayotgan xabar ham shu yerda)
+  bot.use(adminLessons); // kurs darslari: video yuborish/forward → kurs → nom (chek oqimidan oldin)
+  bot.use(adminExport); // foydalanuvchilar bazasini fayl sifatida olish
   bot.use(review);
   bot.use(joinRequest);
   bot.use(channelMembership);

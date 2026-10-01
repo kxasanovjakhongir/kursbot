@@ -1,17 +1,19 @@
 import { Composer, InlineKeyboard } from "grammy";
 import type { Product, User } from "@prisma/client";
 import type { BotContext } from "../context";
-import { contactAdminKeyboard, mainMenu, phoneKeyboard, withNav } from "../keyboards";
+import { contactAdminKeyboard, mainMenu, phoneKeyboard } from "../keyboards";
 import { cancelOrderConfirmScreen, catalogScreen, courseSectionScreen, orderCancelledScreen, paymentScreen, productScreen, type OrderWithProduct } from "../screens/catalog";
 import { profileScreen } from "../screens/account";
+import { lockedLessonsScreen, ownedCourseScreen } from "../screens/lessons";
 import { purchasesScreen } from "../screens/purchases";
 import { CB, COURSE_SECTIONS, ID_RE, PAGE_RE } from "../ui/callbacks";
 import { render, renderLoading, renderNew } from "../ui/render";
 import { allLabels } from "../../i18n";
 import { parseStartPayload } from "../../lib/deeplink";
 import { normalizePhone } from "../../lib/phone";
-import { recordStart, setPhone, setLastProduct, displayName } from "../../services/users";
-import { checkOwnership, getActiveProduct } from "../../services/products";
+import { recordStart, setPhone, setLastProduct, displayName, markBlocked } from "../../services/users";
+import { hasCourseAccess, isBlockedError, isUnavailableFileError, lessonPosition, sendLesson } from "../../services/lessons";
+import { checkOwnership, getActiveProduct, getViewableProduct } from "../../services/products";
 import { recordLinkVisit, resolveEntry } from "../../services/campaignLinks";
 import { cancelOrder, createOrder } from "../../services/orders";
 import { refreshInviteLink } from "../../services/access";
@@ -48,10 +50,8 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
 
   const own = await checkOwnership(user.id, product);
   if (own.kind === "owned") {
-    await render(ctx, {
-      text: await ctx.t("already_owned"),
-      keyboard: withNav(new InlineKeyboard().text(ctx.label("menu_purchases"), CB.purchases()), ctx.lang, CB.catalog()),
-    });
+    // Xarid qilingan kurs: darslar (videolar) va kanal havolasi
+    await render(ctx, await ownedCourseScreen(ctx, product));
     return;
   }
   if (own.kind === "partial") {
@@ -166,7 +166,7 @@ pm.callbackQuery(new RegExp(`^nav:cat:${PAGE_RE}$`), async (ctx) => {
 });
 
 pm.callbackQuery(/^p:([\w-]{1,32})$/, async (ctx) => {
-  const product = await getActiveProduct(ctx.match[1]);
+  const product = await getViewableProduct(ctx.match[1], ctx.user!.id);
   if (!product) {
     await ctx.answerCallbackQuery({ text: await ctx.t("error_not_found") });
     return showCatalog(ctx);
@@ -184,6 +184,43 @@ pm.callbackQuery(/^pi:([\w-]{1,32}):(about|price|program|teacher)$/, async (ctx)
   }
   await render(ctx, await courseSectionScreen(ctx, product, section));
   await trackEvent(ctx.user!.id, "course_section", { product: product.code, section });
+});
+
+// ---------- Kurs darslari (videolar) ----------
+pm.callbackQuery(new RegExp(`^ls:([\\w-]{1,32}):${PAGE_RE}$`), async (ctx) => {
+  const product = await getViewableProduct(ctx.match[1], ctx.user!.id);
+  if (!product) {
+    await ctx.answerCallbackQuery({ text: await ctx.t("error_not_found") });
+    return showCatalog(ctx);
+  }
+  const page = Number(ctx.match[2]);
+  const own = await checkOwnership(ctx.user!.id, product);
+  await render(ctx, own.kind === "owned" ? await ownedCourseScreen(ctx, product, page) : await lockedLessonsScreen(ctx, product, page));
+});
+
+pm.callbackQuery(/^l:(\d{1,9})$/, async (ctx) => {
+  const lesson = await prisma.lesson.findUnique({ where: { id: Number(ctx.match[1]) } });
+  if (!lesson) {
+    await ctx.answerCallbackQuery({ text: await ctx.t("error_not_found"), show_alert: true });
+    return;
+  }
+  // Faqat shu kursga faol kirishi bor xaridor (IDOR: dars ID sini qo'lda yuborish ham tekshiriladi)
+  if (!(await hasCourseAccess(ctx.user!.id, lesson.productId))) {
+    await ctx.answerCallbackQuery({ text: await ctx.t("lesson_locked"), show_alert: true });
+    return;
+  }
+  await ctx.answerCallbackQuery({ text: await ctx.t("lesson_sending") });
+  try {
+    await sendLesson(ctx.api, ctx.from.id, lesson, await lessonPosition(lesson));
+  } catch (err) {
+    if (isBlockedError(err)) return markBlocked(BigInt(ctx.from.id));
+    if (isUnavailableFileError(err)) {
+      await ctx.reply(await ctx.t("lesson_unavailable"), { reply_markup: contactAdminKeyboard(ctx.lang) });
+      return;
+    }
+    throw err; // errorBoundary: log + foydalanuvchiga umumiy xabar
+  }
+  await trackEvent(ctx.user!.id, "lesson_view", { lessonId: lesson.id, productId: lesson.productId });
 });
 
 // ---------- 5.4. "Darslikni olaman" ----------

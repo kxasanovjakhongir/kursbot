@@ -96,6 +96,14 @@ const schema = z.object({
     .or(z.literal("").transform(() => undefined)),
   // initData qancha vaqt amal qiladi (soniya). Telegram har ochilishda yangisini beradi
   WEB_APP_AUTH_MAX_AGE: z.coerce.number().int().positive().default(86400),
+
+  // --- Kurs darslari ---
+  // true — dars videolarini forward qilish va saqlab olish taqiqlanadi (Telegram protect_content).
+  // Standart: false — xaridor videoni ko'ra va yuklab ola oladi
+  LESSON_PROTECT_CONTENT: z
+    .enum(["true", "false", "1", "0", ""])
+    .optional()
+    .transform((v) => v === "true" || v === "1"),
 });
 
 const checked = schema.superRefine((c, ctx) => {

@@ -5,16 +5,13 @@ import { label, type Lang } from "../i18n";
 import { can, type Role } from "../services/permissions";
 import { CB } from "./ui/callbacks";
 
-/** Doimiy pastki menyu (reply keyboard). Adminlarga qo'shimcha "Admin panel" tugmasi */
+/**
+ * Doimiy pastki menyu (reply keyboard): "Darsliklar" va "Yordam". "Admin panel" faqat adminlarga.
+ * Xaridlar, profil va sozlamalar menyuda yo'q — kurs ichidan (kanal havolasi, darslar) va
+ * /purchases, /profile, /settings buyruqlari orqali ochiladi.
+ */
 export function mainMenu(lang: Lang, role: Role = "user"): Keyboard {
-  const kb = new Keyboard()
-    .text(label(lang, "menu_products"))
-    .text(label(lang, "menu_purchases"))
-    .row()
-    .text(label(lang, "menu_profile"))
-    .text(label(lang, "menu_settings"))
-    .row()
-    .text(label(lang, "menu_help"));
+  const kb = new Keyboard().text(label(lang, "menu_products")).text(label(lang, "menu_help"));
   if (can(role, "orders.review")) kb.row().text(label(lang, "menu_admin"));
   return kb.resized().persistent();
 }

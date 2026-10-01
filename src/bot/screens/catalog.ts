@@ -4,7 +4,8 @@ import type { BotContext } from "../context";
 import { webAppUrl, withAskButton, withNav, withPagination, withWebAppButton } from "../keyboards";
 import { escapeHtml, formatDate, formatDateTime, formatMoney, formatSum, groupCard } from "../../lib/format";
 import { prisma } from "../../db";
-import { listActiveProducts, ownedProductIds } from "../../services/products";
+import { listActiveProducts, ownedInactiveProducts, ownedProductIds } from "../../services/products";
+import { lessonCounts } from "../../services/lessons";
 import { CB, type CourseSection } from "../ui/callbacks";
 import { paginate, type Screen } from "../ui/render";
 
@@ -18,10 +19,12 @@ function priceLine(product: Product): string {
 
 /** 📚 Darsliklar: sahifalangan ro'yxat, olingan darsliklar ✅ bilan belgilanadi */
 export async function catalogScreen(ctx: BotContext, page = 1): Promise<Screen> {
-  const [products, owned] = await Promise.all([
+  const [active, owned] = await Promise.all([
     listActiveProducts(),
     ctx.user ? ownedProductIds(ctx.user.id) : Promise.resolve(new Set<number>()),
   ]);
+  // Sotuvdan olingan, lekin sotib olingan kurslar ham ko'rinadi — darslar va kanal havolasi shu yerdan
+  const products = [...active, ...(await ownedInactiveProducts(owned))];
   if (products.length === 0) {
     return { text: await ctx.t("no_products"), keyboard: withNav(new InlineKeyboard(), ctx.lang) };
   }
@@ -56,6 +59,9 @@ export async function productScreen(ctx: BotContext, product: Product): Promise<
     });
     if (sections.length % 2 === 1) kb.row();
   }
+  // Kurs darslari (videolar) — xarid qilmaganlarga nomlari 🔒 bilan ko'rinadi
+  const lessons = (await lessonCounts([product.id])).get(product.id) ?? 0;
+  if (lessons > 0) kb.text(ctx.label("btn_lessons", { soni: lessons }), CB.lessons(product.code)).row();
   withAskButton(kb.text(ctx.label("btn_buy"), CB.buy(product.code)), ctx.lang);
   // Mini App aynan shu darslik sahifasida ochiladi (bot → ilova o'tishida kontekst saqlanadi)
   const appPath = `product/${encodeURIComponent(product.code)}`;

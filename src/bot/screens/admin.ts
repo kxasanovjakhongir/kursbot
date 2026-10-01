@@ -28,6 +28,9 @@ export async function adminHomeScreen(ctx: BotContext): Promise<Screen> {
   if (can(ctx.role, "products.manage")) kb.text(ctx.label("adm_btn_products"), CB.adminProducts);
   if (can(ctx.role, "cards.manage")) kb.text(ctx.label("adm_btn_cards"), CB.adminCards);
   kb.row();
+  if (can(ctx.role, "lessons.manage")) kb.text("🎥 Darslar", CB.adminLessons);
+  if (can(ctx.role, "users.export")) kb.text("📤 Export", CB.adminExport);
+  kb.row();
   if (can(ctx.role, "admins.manage")) kb.text(ctx.label("adm_btn_admins"), CB.adminAdmins);
   kb.text(ctx.label("adm_btn_commands"), CB.adminHelp);
   const text = await ctx.t("adm_title", { rol: await ctx.t(ROLE_KEY[ctx.role]), cheklar: pending });

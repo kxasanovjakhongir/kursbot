@@ -1,4 +1,4 @@
-import type { Prisma, User } from "@prisma/client";
+import type { OrderStatus, Prisma, User } from "@prisma/client";
 import { prisma } from "../db";
 import { DEFAULT_LANG, isLang, type Lang } from "../i18n";
 import { PAID_STATUSES } from "./orders";
@@ -166,10 +166,16 @@ export interface UserSearch {
   registered?: boolean;
   from?: Date;
   to?: Date;
+  /** Shu kursni sotib olganlar (to'langan buyurtma) */
+  boughtProductId?: number;
+  /** Shu holatdagi buyurtmasi borlar (to'lov holati) */
+  paymentStatus?: OrderStatus;
 }
 
-/** Foydalanuvchilarni qidirish (admin panel va Mini App admin bo'limi): ID, username, ism, telefon bo'yicha */
-export async function searchUsers({ q, status, page, pageSize, productId, source, campaign, purchased, registered, from, to }: UserSearch) {
+export type UserFilter = Omit<UserSearch, "page" | "pageSize">;
+
+/** Ro'yxat (admin panel, Mini App) va export uchun yagona filtr */
+export async function buildUserWhere({ q, status, productId, source, campaign, purchased, registered, from, to, boughtProductId, paymentStatus }: UserFilter): Promise<Prisma.UserWhereInput> {
   const where: Prisma.UserWhereInput = { isBot: false };
   const and: Prisma.UserWhereInput[] = [];
   // Kurs: shu kurs linki orqali kelgan yoki oxirgi ko'rgan kursi shu
@@ -184,6 +190,8 @@ export async function searchUsers({ q, status, page, pageSize, productId, source
     const paid = { some: { status: { in: PAID_STATUSES } } };
     and.push(purchased ? { orders: paid } : { NOT: { orders: paid } });
   }
+  if (boughtProductId) and.push({ orders: { some: { productId: boughtProductId, status: { in: PAID_STATUSES } } } });
+  if (paymentStatus) and.push({ orders: { some: { status: paymentStatus } } });
   if (registered !== undefined) and.push({ phone: registered ? { not: null } : null });
   if (from || to) and.push({ createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: to } : {}) } });
   if (and.length) where.AND = and;
@@ -200,6 +208,12 @@ export async function searchUsers({ q, status, page, pageSize, productId, source
       { phone: { contains: escapeLike(term) } },
     ];
   }
+  return where;
+}
+
+/** Foydalanuvchilarni qidirish (admin panel va Mini App admin bo'limi): ID, username, ism, telefon bo'yicha */
+export async function searchUsers({ page, pageSize, ...filter }: UserSearch) {
+  const where = await buildUserWhere(filter);
   const [items, total] = await Promise.all([
     prisma.user.findMany({
       where,

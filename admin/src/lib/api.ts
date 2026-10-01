@@ -70,3 +70,34 @@ export function errorMessage(err: unknown): string {
   }
   return err instanceof Error ? err.message : "Noma'lum xatolik";
 }
+
+/**
+ * Faylni yuklab olish (export): javob blob sifatida olinadi va brauzerda saqlanadi.
+ * Katta fayl uzoq tayyorlanishi mumkin — umumiy 30 s timeout bu so'rovga qo'llanilmaydi.
+ */
+export async function downloadFile(url: string, params: Record<string, unknown>, fallbackName: string): Promise<void> {
+  let res;
+  try {
+    res = await api.get<Blob>(url, { params, responseType: "blob", timeout: 0 });
+  } catch (err) {
+    // Xato javobi ham blob bo'lib keladi — JSON ga o'girib, odatdagi xabar ko'rsatiladi
+    if (err instanceof AxiosError && err.response?.data instanceof Blob) {
+      try {
+        err.response.data = JSON.parse(await err.response.data.text()) as unknown;
+      } catch {
+        /* JSON emas — umumiy xabar */
+      }
+    }
+    throw err;
+  }
+  const disposition = String(res.headers["content-disposition"] ?? "");
+  const name = /filename="?([^";]+)"?/.exec(disposition)?.[1] ?? fallbackName;
+  const href = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 10_000);
+}

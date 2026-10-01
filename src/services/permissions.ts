@@ -18,6 +18,10 @@ export const PERMISSIONS = [
   "users.manage",
   "broadcast.send",
   "content.manage",
+  // Kurs darslari (videolar): qo'shish, tahrirlash, tartib, o'chirish
+  "lessons.manage",
+  // Foydalanuvchilar bazasini fayl (xlsx/docx/pdf) sifatida yuklab olish
+  "users.export",
   // Super admin
   "products.manage",
   "cards.manage",
@@ -37,6 +41,8 @@ const ADMIN: readonly Permission[] = [
   "users.manage",
   "broadcast.send",
   "content.manage",
+  "lessons.manage",
+  "users.export",
 ];
 const SUPER_ADMIN: readonly Permission[] = PERMISSIONS;
 

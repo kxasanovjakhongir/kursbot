@@ -41,6 +41,10 @@ export const ACTIONS = [
   "REMOVE_FROM_CHANNEL",
   "UPDATE_ACCESS_EXPIRY",
   "SEND_USER_MESSAGE",
+  "EXPORT_USERS",
+  "UPDATE_LESSON",
+  "DELETE_LESSON",
+  "REORDER_LESSONS",
 ] as const;
 
 export type ActivityAction = (typeof ACTIONS)[number];

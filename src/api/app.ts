@@ -28,6 +28,7 @@ import { linksRouter } from "./routes/links";
 import { analyticsRouter } from "./routes/analytics";
 import { webAppRouter } from "./webapp/router";
 import { errorsRouter } from "./routes/errors";
+import { lessonsRouter } from "./routes/lessons";
 
 export interface AppOptions {
   runtime: BotRuntime;
@@ -89,6 +90,8 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
       // Admin panel va (alohida hostingda bo'lsa) Mini App manzillari
       origin: [...config.CLIENT_URL.split(",").map((s) => s.trim()), ...(config.WEB_APP_URL ? [new URL(config.WEB_APP_URL).origin] : [])],
       credentials: false,
+      // Export fayl nomi (panel alohida domenda bo'lsa ham brauzer o'qiy olishi uchun)
+      exposedHeaders: ["Content-Disposition", "X-Export-Total"],
     }),
   );
   api.use(express.json({ limit: "1mb" }));
@@ -124,6 +127,8 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   api.use("/orders", requirePermission("orders.review"), ordersRouter(runtime));
   // Narx, video, kanal va kartalar — faqat SUPER_ADMIN (TZ 2.2)
   api.use("/products", requirePermission("products.manage"), productsRouter(runtime));
+  // Kurs darslari (videolar): ro'yxat, nom/izoh, tartib, o'chirish. Qo'shish — bot orqali (file_id)
+  api.use("/lessons", requirePermission("lessons.manage"), lessonsRouter());
   api.use("/cards", requirePermission("cards.manage"), cardsRouter);
   api.use("/admins", requirePermission("admins.manage"), adminsRouter(runtime));
   api.use("/activity-logs", requirePermission("logs.view"), activityRouter);

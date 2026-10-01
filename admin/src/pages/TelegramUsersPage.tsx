@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Eye, Search, X } from "lucide-react";
-import { api } from "../lib/api";
-import { fmtDate, fmtSum, fullName, timeAgo } from "../lib/format";
+import { Eye, FileSpreadsheet, FileText, FileType2, Search, X } from "lucide-react";
+import { api, downloadFile, errorMessage } from "../lib/api";
+import { fmtDate, fmtSum, fullName, ORDER_STATUS, timeAgo } from "../lib/format";
+import { useToast } from "../context/ToastContext";
 import type { Paged, TelegramUser, UserFilters } from "../lib/types";
 import { useAsync } from "../hooks/useAsync";
 import { useDebounced } from "../hooks/useDebounced";
@@ -20,15 +21,45 @@ interface Filters {
   registered: "" | "yes" | "no";
   from: string;
   to: string;
+  /** Shu kursni sotib olganlar */
+  boughtProductId: string;
+  /** To'lov (buyurtma) holati */
+  paymentStatus: string;
 }
-const NO_FILTERS: Filters = { status: "all", productId: "", source: "", campaign: "", purchased: "", registered: "", from: "", to: "" };
+const NO_FILTERS: Filters = { status: "all", productId: "", source: "", campaign: "", purchased: "", registered: "", from: "", to: "", boughtProductId: "", paymentStatus: "" };
+
+type ExportFormat = "xlsx" | "docx" | "pdf";
+const EXPORTS: { format: ExportFormat; label: string; icon: typeof FileText }[] = [
+  { format: "xlsx", label: "Excel yuklab olish", icon: FileSpreadsheet },
+  { format: "docx", label: "Word yuklab olish", icon: FileText },
+  { format: "pdf", label: "PDF yuklab olish", icon: FileType2 },
+];
 
 /** "YYYY-MM-DD" (mahalliy kun) → shu kun boshi / keyingi kun boshi (ISO) */
 const dayStart = (d: string) => new Date(`${d}T00:00:00`).toISOString();
 const nextDayStart = (d: string) => new Date(new Date(`${d}T00:00:00`).getTime() + 86400_000).toISOString();
 
+/** Ro'yxat va export uchun bir xil so'rov parametrlari (export aynan ko'rinib turgan filtr natijasi) */
+function filterParams(f: Filters, q: string) {
+  return {
+    q: q || undefined,
+    status: f.status,
+    productId: f.productId || undefined,
+    source: f.source || undefined,
+    campaign: f.campaign || undefined,
+    purchased: f.purchased || undefined,
+    registered: f.registered || undefined,
+    from: f.from ? dayStart(f.from) : undefined,
+    to: f.to ? nextDayStart(f.to) : undefined,
+    boughtProductId: f.boughtProductId || undefined,
+    paymentStatus: f.paymentStatus || undefined,
+  };
+}
+
 export default function TelegramUsersPage() {
   const navigate = useNavigate();
+  const toast = useToast();
+  const [exporting, setExporting] = useState<ExportFormat | null>(null);
   const [q, setQ] = useState("");
   const [f, setF] = useState<Filters>(NO_FILTERS);
   const [page, setPage] = useState(1);
@@ -44,27 +75,38 @@ export default function TelegramUsersPage() {
   const users = useAsync(
     () =>
       api
-        .get<Paged<TelegramUser>>("/telegram-users", {
-          params: {
-            q: dq || undefined,
-            status: f.status,
-            page,
-            productId: f.productId || undefined,
-            source: f.source || undefined,
-            campaign: f.campaign || undefined,
-            purchased: f.purchased || undefined,
-            registered: f.registered || undefined,
-            from: f.from ? dayStart(f.from) : undefined,
-            to: f.to ? nextDayStart(f.to) : undefined,
-          },
-        })
+        .get<Paged<TelegramUser>>("/telegram-users", { params: { ...filterParams(f, dq), page } })
         .then((r) => r.data),
     [dq, f, page],
   );
 
+  const runExport = async (format: ExportFormat) => {
+    setExporting(format);
+    try {
+      await downloadFile(`/telegram-users/export/${format}`, filterParams(f, dq), `users.${format}`);
+      toast.success("Fayl yuklab olindi");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <>
-      <PageHeader title="Telegram foydalanuvchilar" subtitle="Qaysi kurs, manba va kampaniyadan kelgani, ro'yxatdan o'tgani va xaridlari" />
+      <PageHeader
+        title="Telegram foydalanuvchilar"
+        subtitle="Qaysi kurs, manba va kampaniyadan kelgani, ro'yxatdan o'tgani va xaridlari"
+        action={
+          <div className="flex flex-wrap gap-2" title="Joriy filtrlar bo'yicha yuklab olinadi">
+            {EXPORTS.map((e) => (
+              <Button key={e.format} variant="secondary" size="sm" loading={exporting === e.format} disabled={exporting !== null} onClick={() => void runExport(e.format)}>
+                {exporting !== e.format && <e.icon className="h-4 w-4" />} {e.label}
+              </Button>
+            ))}
+          </div>
+        }
+      />
       <Card>
         <div className="space-y-3 border-b border-gray-100 p-4">
           <div className="flex flex-col gap-3 sm:flex-row">
@@ -87,9 +129,9 @@ export default function TelegramUsersPage() {
               <option value="banned">Cheklangan</option>
             </Select>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            <Select value={f.productId} onChange={(e) => update({ productId: e.target.value })} aria-label="Kurs">
-              <option value="">Barcha kurslar</option>
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+            <Select value={f.productId} onChange={(e) => update({ productId: e.target.value })} aria-label="Qiziqqan kursi" title="Kurs linki orqali kelgan yoki oxirgi ko'rgan kursi">
+              <option value="">Qiziqqan kursi: hammasi</option>
               {(options.data?.products ?? []).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.title}
@@ -121,6 +163,22 @@ export default function TelegramUsersPage() {
               <option value="">Xarid: hammasi</option>
               <option value="yes">Sotib olgan</option>
               <option value="no">Sotib olmagan</option>
+            </Select>
+            <Select value={f.boughtProductId} onChange={(e) => update({ boughtProductId: e.target.value })} aria-label="Sotib olgan kursi">
+              <option value="">Sotib olgan kursi: hammasi</option>
+              {(options.data?.products ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title}
+                </option>
+              ))}
+            </Select>
+            <Select value={f.paymentStatus} onChange={(e) => update({ paymentStatus: e.target.value })} aria-label="To'lov holati">
+              <option value="">To'lov holati: hammasi</option>
+              {Object.entries(ORDER_STATUS).map(([value, s]) => (
+                <option key={value} value={value}>
+                  {s.label}
+                </option>
+              ))}
             </Select>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">

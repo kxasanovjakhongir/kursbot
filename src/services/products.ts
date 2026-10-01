@@ -15,6 +15,26 @@ export async function getActiveProduct(code: string | null | undefined): Promise
   return p && p.isActive ? p : null;
 }
 
+/**
+ * Ko'rish mumkin bo'lgan kurs: sotuvdagi yoki — sotuvdan olingan bo'lsa ham — foydalanuvchi uni
+ * sotib olgan (darslar va kanal havolasi xaridorda qolishi kerak). Paneldan o'chirilgani — yo'q.
+ */
+export async function getViewableProduct(code: string | null | undefined, userId: bigint): Promise<Product | null> {
+  const p = await getProductByCode(code);
+  if (!p || p.deletedAt) return null;
+  if (p.isActive) return p;
+  return (await checkOwnership(userId, p)).kind === "owned" ? p : null;
+}
+
+/** Sotuvdan olingan, lekin foydalanuvchida bor kurslar (katalogda ✅ bilan qoladi) */
+export async function ownedInactiveProducts(owned: Set<number>): Promise<Product[]> {
+  if (!owned.size) return [];
+  return prisma.product.findMany({
+    where: { id: { in: [...owned] }, isActive: false, deletedAt: null },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+}
+
 /** Kanalga kirish beradigan mahsulotlar: oddiy darslik — o'zi, to'plam — tarkibi */
 export async function componentProducts(product: Product): Promise<Product[]> {
   if (product.type !== "bundle") return [product];

@@ -55,7 +55,7 @@ export const uz = {
   course_teacher: "👨‍🏫 <b>{mahsulot}</b> — o'qituvchi\n\n{v}",
   btn_buy: "✅ Darslikni olaman",
   btn_ask: "💬 Savol berish",
-  already_owned: "✅ Siz bu darslikni olgansiz.\n\nKanal linkini «🧾 Mening xaridlarim» bo'limidan qayta olishingiz mumkin.",
+  already_owned: "✅ Siz bu darslikni olgansiz.\n\nKanal linkini kurs sahifasidagi «🔗 Kanal havolasi» tugmasi orqali qayta olishingiz mumkin.",
   bundle_partial: "Sizda to'plamdagi darsliklardan biri allaqachon bor. Yetishmayotgan darslik:",
 
   // ---------- To'lov ----------
@@ -155,9 +155,21 @@ export const uz = {
   language_title: "🌐 <b>Tilni tanlang</b>",
   language_changed: "✅ Til o'zgartirildi.",
 
+  // ---------- Kurs darslari ----------
+  course_owned: "✅ <b>{mahsulot}</b>\n\nSiz bu kursni olgansiz.",
+  course_lessons_hint: "🎬 Darslar: {soni} ta. Ko'rish uchun darsni tanlang 👇",
+  course_no_lessons: "🎬 Darslar hali qo'shilmagan. Qo'shilishi bilan shu yerda paydo bo'ladi.",
+  course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nTo'plamdagi kursni tanlang 👇",
+  lessons_title: "🎬 <b>{mahsulot}</b> — darslar ({soni} ta)\n\n🔒 Darslarni ko'rish uchun kursni xarid qiling.",
+  btn_lessons: "🎬 Darslar ({soni})",
+  btn_channel_link: "🔗 Kanal havolasi",
+  lesson_locked: "🔒 Bu darslikdan foydalanish uchun avval kursni xarid qilishingiz kerak.",
+  lesson_sending: "⏳ Video yuborilmoqda...",
+  lesson_unavailable: "⚠️ Bu video hozircha mavjud emas. Admin xabardor qilindi — tez orada tuzatiladi.",
+
   // ---------- Yordam ----------
   help:
-    "💬 <b>Yordam</b>\n\n<b>Darslikni qanday olaman?</b>\n1️⃣ «📚 Darsliklar» bo'limidan darslikni tanlang.\n2️⃣ «✅ Darslikni olaman» tugmasini bosing.\n3️⃣ Kartaga to'lov qiling va chekni shu chatga yuboring.\n4️⃣ Admin tasdiqlagach, yopiq kanal linkini olasiz.\n\n<b>Link eskirdimi?</b>\n«🧾 Mening xaridlarim» bo'limidan yangisini oling.\n\nSavol bo'lsa, admin bilan bog'laning 👇",
+    "💬 <b>Yordam</b>\n\n<b>Darslikni qanday olaman?</b>\n1️⃣ «📚 Darsliklar» bo'limidan darslikni tanlang.\n2️⃣ «✅ Darslikni olaman» tugmasini bosing.\n3️⃣ Kartaga to'lov qiling va chekni shu chatga yuboring.\n4️⃣ Admin tasdiqlagach, yopiq kanal linkini olasiz.\n\n<b>Link eskirdimi?</b>\n«📚 Darsliklar» → kursni tanlang → «🔗 Kanal havolasi».\n\nSavol bo'lsa, admin bilan bog'laning 👇",
 
   // ---------- Xatolar ----------
   error_generic: "❌ Xatolik yuz berdi.\n\nIltimos, birozdan keyin qayta urinib ko'ring.",

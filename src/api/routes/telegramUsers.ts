@@ -1,11 +1,14 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../../db";
 import { notifyUser } from "../../bot/notify";
 import { translate } from "../../i18n";
 import { logActivity } from "../../services/activity";
 import { banUser, KickFailedError, revokeGrantById, setGrantExpiry, unbanUser } from "../../services/membership";
-import { searchUsers, userLang } from "../../services/users";
+import { searchUsers, userLang, type UserFilter } from "../../services/users";
+import { EXPORT_MIME, exportFileName, prepareUserExport, type ExportFormat } from "../../services/export";
+import { logger } from "../../lib/logger";
 import { formatDate } from "../../lib/format";
 import { assertPermission, currentUser } from "../auth";
 import { HttpError } from "../errors";
@@ -14,7 +17,7 @@ import { clientIp, paged, pagination, parseBigId, parseBody, parseQuery } from "
 
 const yesNo = z.enum(["yes", "no"]).optional().transform((v) => (v === undefined ? undefined : v === "yes"));
 
-const listQuery = pagination.extend({
+const filterQuery = z.object({
   q: z.string().trim().max(100).optional(),
   status: z.enum(["all", "active", "blocked", "banned"]).default("all"),
   productId: z.coerce.number().int().positive().optional(),
@@ -24,7 +27,18 @@ const listQuery = pagination.extend({
   registered: yesNo,
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
+  // Shu kursni sotib olganlar va shu holatdagi buyurtmasi borlar (to'lov holati)
+  boughtProductId: z.coerce.number().int().positive().optional(),
+  paymentStatus: z.enum(["new", "receipt_sent", "rejected", "approved", "joined", "expired", "cancelled", "refunded"]).optional(),
 });
+const listQuery = pagination.merge(filterQuery);
+
+/** Bo'sh qiymatli filtrlar (panel "" yuborishi mumkin) — filtr yo'q deb qaraladi */
+const toFilter = (q: z.infer<typeof filterQuery>): UserFilter => ({ ...q, source: q.source || undefined, campaign: q.campaign || undefined });
+
+// /export/excel, /export/word ham qabul qilinadi
+const FORMAT_ALIAS: Record<string, ExportFormat> = { xlsx: "xlsx", excel: "xlsx", docx: "docx", word: "docx", pdf: "pdf" };
+
 
 const banSchema = z.object({ removeFromChannels: z.boolean().default(true) }).strict();
 
@@ -48,11 +62,54 @@ async function findUser(id: bigint) {
 export function telegramUsersRouter(rt: BotRuntime): Router {
   const r = Router();
 
+  /** Export og'ir amal — har bir panel foydalanuvchisiga daqiqasiga 10 ta */
+  const exportLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: 10,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    keyGenerator: (req) => `export:${req.panelUser?.id ?? "anon"}`,
+    message: { error: "Juda ko'p export so'rovi. Bir daqiqadan keyin qayta urinib ko'ring.", details: { code: "rate_limited" } },
+  });
+
+
   r.get("/", async (req, res) => {
-    const query = parseQuery(listQuery, req);
-    const { items, total } = await searchUsers({ ...query, source: query.source || undefined, campaign: query.campaign || undefined });
-    const { page, pageSize } = query;
+    const { page, pageSize, ...filter } = parseQuery(listQuery, req);
+    const { items, total } = await searchUsers({ ...toFilter(filter), page, pageSize });
     res.json(paged(items, total, page, pageSize));
+  });
+
+  /**
+   * Foydalanuvchilarni yuklab olish (xlsx | docx | pdf) — ro'yxatdagi filtrlarning aynan o'zi.
+   * Alohida ruxsat ("users.export"). Fayl bo'laklab hosil qilinadi va javobga oqim bilan yoziladi.
+   */
+  r.get("/export/:format", exportLimiter, async (req, res) => {
+    assertPermission(req, "users.export");
+    const format = FORMAT_ALIAS[String(req.params.format).toLowerCase()];
+    if (!format) throw new HttpError(400, "Format: xlsx, docx yoki pdf");
+    const filter = toFilter(parseQuery(filterQuery, req));
+    // Statistika so'rovlari shu yerda — xato bo'lsa hali sarlavhalar yuborilmagan, oddiy JSON xato qaytadi
+    const { summary, write } = await prepareUserExport(format, filter);
+    const name = exportFileName(format, summary.generatedAt);
+    res.setHeader("Content-Type", EXPORT_MIME[format]);
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Export-Total", String(summary.total));
+    const started = Date.now();
+    try {
+      await write(res);
+    } catch (err) {
+      // Fayl yarmida uzildi: JSON yuborib bo'lmaydi — ulanish yopiladi, brauzer yuklashni xato deb ko'rsatadi
+      logger.error({ err, format, total: summary.total }, "export yozishda xatolik");
+      res.destroy();
+      return;
+    }
+    await logActivity(
+      currentUser(req).id,
+      "EXPORT_USERS",
+      `Foydalanuvchilar eksporti (${format}): ${summary.total} ta — ${summary.filters.join("; ")} (${Date.now() - started} ms)`,
+      clientIp(req),
+    );
   });
 
   /** Filtr variantlari: kurslar, manbalar, kampaniyalar (bazadan) */

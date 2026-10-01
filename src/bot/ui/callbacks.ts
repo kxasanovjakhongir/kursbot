@@ -31,6 +31,10 @@ export const CB = {
   cancelOrder: (orderId: bigint) => `ord:cancel:${orderId}`,
   cancelOrderConfirm: (orderId: bigint) => `ord:cancel_ok:${orderId}`,
   link: (grantId: bigint) => `link:${grantId}`,
+  /** Kurs darslari ro'yxati (egasi — ko'rish, boshqalar — 🔒) */
+  lessons: (code: string, page = 1) => `ls:${code}:${page}`,
+  /** Darsni (videoni) yuborish */
+  lesson: (lessonId: number) => `l:${lessonId}`,
   contact: "contact",
   resend: "resend",
 
@@ -40,6 +44,8 @@ export const CB = {
   adminCards: "ap:cards",
   adminAdmins: "ap:admins",
   adminHelp: "ap:help",
+  adminLessons: "ap:lessons",
+  adminExport: "ap:export",
   adminPending: "adm:pending",
 } as const;
 

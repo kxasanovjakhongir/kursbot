@@ -176,7 +176,7 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     await send(contact("+998 90 123 45 67"));
     expect((await prisma.user.findUniqueOrThrow({ where: { id: user.id } })).phone).toBe("+998901234567");
     const menu = sent()[0];
-    expect(buttons(menu).map((b) => b.text)).toEqual([uz.menu_products, uz.menu_purchases, uz.menu_profile, uz.menu_settings, uz.menu_help]);
+    expect(buttons(menu).map((b) => b.text)).toEqual([uz.menu_products, uz.menu_help]);
     expect(textOf(lastScreen())).toContain("Darsliklar");
     expect(hasButton(lastScreen(), "p:4b")).toBe(true);
     // Mini App kirish nuqtasi (WEB_APP_URL dan, kodda hardcode emas)

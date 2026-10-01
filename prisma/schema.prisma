@@ -206,6 +206,7 @@ model Product {
   links      CampaignLink[]
   promos     PromoCode[]
   broadcasts Broadcast[]
+  lessons    Lesson[]
 
   @@map("products")
 }
@@ -375,6 +376,7 @@ model Admin {
   filesSent      AccessGrant[]
   messages       Message[]
   auditLogs      AuditLog[]
+  lessons        Lesson[]
 
   @@map("admins")
 }
@@ -687,4 +689,45 @@ model ErrorLog {
   @@index([resolvedAt, lastSeenAt])
   @@index([lastSeenAt])
   @@map("error_logs")
+}
+
+enum LessonMediaType {
+  video
+  // Kompyuterdan "fayl sifatida" yuborilgan video (sendDocument bilan yuboriladi)
+  document
+}
+
+// Kurs darsi (video). Fayl serverga yuklab olinmaydi: Telegram file_id saqlanadi va mijozga shu orqali
+// yuboriladi. file_id faqat shu bot uchun amal qiladi — bot tokeni boshqa botga almashtirilsa, videolar qayta yuborilishi kerak
+model Lesson {
+  id                   Int             @id @default(autoincrement())
+  productId            Int             @map("product_id")
+  title                String
+  description          String?
+  caption              String?
+  mediaType            LessonMediaType @default(video) @map("media_type")
+  telegramFileId       String          @map("telegram_file_id")
+  telegramFileUniqueId String          @map("telegram_file_unique_id")
+  // Admin video yuborgan xabar (bot chatida)
+  telegramChatId       BigInt?         @map("telegram_chat_id")
+  telegramMessageId    BigInt?         @map("telegram_message_id")
+  fileName             String?         @map("file_name")
+  mimeType             String?         @map("mime_type")
+  // 2 GB dan katta bo'lishi mumkin (Premium: 4 GB) — BigInt
+  fileSize             BigInt?         @map("file_size")
+  duration             Int?
+  width                Int?
+  height               Int?
+  sortOrder            Int             @default(0) @map("sort_order")
+  createdById          Int?            @map("created_by")
+  createdAt            DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy Admin?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  // Bitta video bitta kursga ikki marta qo'shilmaydi
+  @@unique([productId, telegramFileUniqueId])
+  @@index([productId, sortOrder])
+  @@map("lessons")
 }

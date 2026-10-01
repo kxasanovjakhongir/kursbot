@@ -25,6 +25,7 @@ import {
   UserCircle,
   Users,
   X,
+  Clapperboard,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -46,6 +47,7 @@ const NAV: NavItem[] = [
   { to: "/receipts", label: "Cheklar", icon: Receipt, badge: "pending" },
   { to: "/orders", label: "Buyurtmalar", icon: ShoppingCart },
   { to: "/products", label: "Mahsulotlar", icon: Package, superOnly: true },
+  { to: "/lessons", label: "Darslar (videolar)", icon: Clapperboard },
   { to: "/links", label: "Kampaniya linklari", icon: Link2 },
   { to: "/cards", label: "To'lov kartalari", icon: CreditCard, superOnly: true },
   { to: "/messages", label: "Xabarlar", icon: MessageSquare },

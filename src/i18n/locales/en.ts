@@ -49,7 +49,7 @@ export const en: Messages = {
   course_teacher: "👨‍🏫 <b>{mahsulot}</b> — teacher\n\n{v}",
   btn_buy: "✅ Get this textbook",
   btn_ask: "💬 Ask a question",
-  already_owned: "✅ You already own this textbook.\n\nYou can get the channel link again in «🧾 My purchases».",
+  already_owned: "✅ You already own this textbook.\n\nYou can get the channel link again with the «🔗 Channel link» button on the course page.",
   bundle_partial: "You already own one of the textbooks in this bundle. The missing one:",
 
   payment_info:
@@ -138,8 +138,19 @@ export const en: Messages = {
   language_title: "🌐 <b>Choose a language</b>",
   language_changed: "✅ Language changed.",
 
+  course_owned: "✅ <b>{mahsulot}</b>\n\nYou already own this course.",
+  course_lessons_hint: "🎬 Lessons: {soni}. Pick a lesson to watch 👇",
+  course_no_lessons: "🎬 No lessons yet. They will appear here as soon as they're added.",
+  course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nPick a course from the bundle 👇",
+  lessons_title: "🎬 <b>{mahsulot}</b> — lessons ({soni})\n\n🔒 Buy the course to watch the lessons.",
+  btn_lessons: "🎬 Lessons ({soni})",
+  btn_channel_link: "🔗 Channel link",
+  lesson_locked: "🔒 You need to buy the course before you can use this lesson.",
+  lesson_sending: "⏳ Sending the video...",
+  lesson_unavailable: "⚠️ This video is unavailable right now. An admin has been notified and will fix it soon.",
+
   help:
-    "💬 <b>Help</b>\n\n<b>How do I get a textbook?</b>\n1️⃣ Pick a textbook in «📚 Textbooks».\n2️⃣ Tap «✅ Get this textbook».\n3️⃣ Pay to the card and send the receipt to this chat.\n4️⃣ Once an admin confirms, you'll get the private channel link.\n\n<b>Link expired?</b>\nGet a new one in «🧾 My purchases».\n\nIf you have questions, contact an admin 👇",
+    "💬 <b>Help</b>\n\n<b>How do I get a textbook?</b>\n1️⃣ Pick a textbook in «📚 Textbooks».\n2️⃣ Tap «✅ Get this textbook».\n3️⃣ Pay to the card and send the receipt to this chat.\n4️⃣ Once an admin confirms, you'll get the private channel link.\n\n<b>Link expired?</b>\n«📚 Textbooks» → pick the course → «🔗 Channel link».\n\nIf you have questions, contact an admin 👇",
 
   error_generic: "❌ Something went wrong.\n\nPlease try again a bit later.",
   error_database: "❌ Couldn't load the data.\n\nPlease try again a bit later.",

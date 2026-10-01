@@ -20,9 +20,6 @@ import { trackEvent } from "../../services/events";
 import { getSettings } from "../../services/settings";
 import { prisma } from "../../db";
 import { config } from "../../config";
-import { stripHtml } from "../../lib/format";
-
-const CAPTION_LIMIT = 1024;
 
 export const customer = new Composer<BotContext>();
 const pm = customer.chatType("private");
@@ -72,13 +69,20 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
 
   const screen = await productScreen(ctx, product);
   if (product.videoFileId) {
-    // Telegram video izohi 1024 belgigacha: uzun tavsif bo'lsa — video alohida, matn tugmalar bilan keyin
-    if (stripHtml(screen.text).length <= CAPTION_LIMIT) {
-      await ctx.replyWithVideo(product.videoFileId, { caption: screen.text, parse_mode: "HTML", reply_markup: screen.keyboard });
-    } else {
-      await ctx.replyWithVideo(product.videoFileId);
-      await renderNew(ctx, screen);
+    // Avval tanishtiruv videosi (hamma ko'radi), keyin alohida xabarda tavsif, narx va «Sotib olish» —
+    // foydalanuvchi videoni ko'rib bo'lgach pastdagi tugmani bosadi
+    try {
+      await ctx.replyWithVideo(product.videoFileId, {
+        caption: await ctx.t("intro_video_caption", { mahsulot: product.title }),
+        parse_mode: "HTML",
+        supports_streaming: true,
+      });
+    } catch (err) {
+      // Video Telegram'da topilmasa ham kursni ko'rish va sotib olish to'xtamaydi
+      if (!isUnavailableFileError(err)) throw err;
+      ctx.log.error({ err, product: product.code }, "tanishtiruv videosi yuborilmadi (file_id yaroqsiz)");
     }
+    await renderNew(ctx, screen);
   } else {
     await render(ctx, screen);
   }

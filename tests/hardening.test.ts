@@ -166,13 +166,14 @@ describe.skipIf(!enabled)("barqarorlik tuzatishlari (bot)", () => {
   };
   const replies = () => calls.filter((c) => c.method === "sendMessage").map((c) => String(c.payload.text ?? ""));
 
-  it("uzun tavsifli kurs + video: video izohsiz, matn alohida (Telegram 1024 cheklovi)", async () => {
+  it("kurs + tanishtiruv video: video qisqa izoh bilan (1024 cheklovidan oshmaydi), uzun tavsif alohida xabarda", async () => {
     await prisma.product.create({ data: { code: "uzun", title: "U".repeat(100), price: 1000, oldPrice: 2000, isActive: true, videoFileId: "vid", description: "t".repeat(900) } });
     await prisma.product.create({ data: { code: "qisqa", title: "Qisqa kurs", price: 1000, isActive: true, videoFileId: "vid2", description: "qisqa" } });
 
     await send(callback("p:uzun"));
     const video = calls.find((c) => c.method === "sendVideo")!;
-    expect(video.payload.caption).toBeUndefined();
+    expect(String(video.payload.caption).length).toBeLessThan(1024);
+    expect(String(video.payload.caption)).not.toContain("t".repeat(100));
     const screen = calls.filter((c) => c.method === "sendMessage").at(-1)!;
     expect(String(screen.payload.text)).toContain("t".repeat(100));
     expect(calls.some((c) => c.method === "sendMessage" && String(c.payload.text).includes("xato"))).toBe(false);
@@ -181,6 +182,7 @@ describe.skipIf(!enabled)("barqarorlik tuzatishlari (bot)", () => {
     await send(callback("p:qisqa"));
     const short = calls.find((c) => c.method === "sendVideo")!;
     expect(String(short.payload.caption)).toContain("Qisqa kurs");
+    expect(calls.findIndex((c) => c.method === "sendVideo")).toBeLessThan(calls.findIndex((c) => c.method === "sendMessage"));
   });
 
   it("to'plamning yetishmayotgan qismi sotuvdan olingan — ko'rsatilmaydi, katalogga qaytadi", async () => {

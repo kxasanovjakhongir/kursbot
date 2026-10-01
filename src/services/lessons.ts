@@ -106,13 +106,25 @@ export const LESSON_TITLE_MAX = 200;
 export const LESSON_CAPTION_MAX = 900;
 
 /** Darslarni faqat oddiy (kanalli) kurslarga qo'shish mumkin: to'plam egalari tarkibidagi kurslar orqali ko'radi */
-export async function listLessonCourses(): Promise<(Pick<Product, "id" | "code" | "title" | "isActive"> & { lessons: number })[]> {
+export async function listLessonCourses(): Promise<(Pick<Product, "id" | "code" | "title" | "isActive"> & { lessons: number; hasIntro: boolean })[]> {
   const products = await prisma.product.findMany({
     where: { deletedAt: null, type: "channel" },
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
-    select: { id: true, code: true, title: true, isActive: true, _count: { select: { lessons: true } } },
+    select: { id: true, code: true, title: true, isActive: true, videoFileId: true, _count: { select: { lessons: true } } },
   });
-  return products.map(({ _count, ...p }) => ({ ...p, lessons: _count.lessons }));
+  return products.map(({ _count, videoFileId, ...p }) => ({ ...p, lessons: _count.lessons, hasIntro: !!videoFileId }));
+}
+
+/**
+ * Kursning tanishtiruv (preview) videosi — sotib olmaganlar ham ko'radi (products.video_file_id, panel bilan umumiy).
+ * Faqat oddiy video: u mijozga sendVideo bilan yuboriladi, «fayl sifatida» yuborilgan video file_id si unga mos emas.
+ */
+export async function setIntroVideo(productId: number, media: Pick<LessonMedia, "mediaType" | "fileId">): Promise<"saved" | "not_video" | "no_course"> {
+  if (media.mediaType !== "video") return "not_video";
+  const course = await getLessonCourse(productId);
+  if (!course) return "no_course";
+  await prisma.product.update({ where: { id: course.id }, data: { videoFileId: media.fileId } });
+  return "saved";
 }
 
 export async function getLessonCourse(productId: number): Promise<Product | null> {

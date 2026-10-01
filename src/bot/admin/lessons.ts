@@ -23,6 +23,7 @@ import {
   listLessonCourses,
   listLessons,
   moveLesson,
+  setIntroVideo,
   sendLesson,
   updateLesson,
   type LessonMedia,
@@ -62,9 +63,11 @@ const flow = new SharedState(
   "lesson_flow",
   30 * 60_000,
   z.discriminatedUnion("step", [
-    // "Video qo'shish" bosildi — video kutilmoqda (kurs oldindan tanlangan bo'lishi mumkin)
-    z.object({ step: z.literal("await_video"), productId: z.number().int().nullable() }),
+    // "Video qo'shish" bosildi — video kutilmoqda. Kurs oldindan tanlangan bo'lsa, intro: tanishtiruv videosi
+    z.object({ step: z.literal("await_video"), productId: z.number().int().nullable(), intro: z.boolean().default(false) }),
     z.object({ step: z.literal("pick_course"), media: mediaSchema }),
+    // Kurs tanlandi — bu video tanishtiruvmi yoki darsmi
+    z.object({ step: z.literal("pick_kind"), media: mediaSchema, productId: z.number().int() }),
     z.object({ step: z.literal("await_title"), media: mediaSchema, productId: z.number().int() }),
     z.object({ step: z.literal("rename"), lessonId: z.number().int() }),
     z.object({ step: z.literal("recaption"), lessonId: z.number().int() }),
@@ -76,6 +79,10 @@ const CBL = {
   addTo: (productId: number) => `al:add:${productId}`,
   cancel: "al:cancel",
   pick: (productId: number) => `al:pick:${productId}`,
+  /** Video turi: i — tanishtiruv (hamma ko'radi), l — dars (faqat xaridorlar) */
+  kind: (kind: "i" | "l") => `al:kind:${kind}`,
+  intro: (productId: number) => `al:intro:${productId}`,
+  introPlay: (productId: number) => `al:introplay:${productId}`,
   useCaption: "al:usecap",
   course: (productId: number, page = 1) => `al:c:${productId}:${page}`,
   view: (id: number) => `al:v:${id}`,
@@ -129,12 +136,13 @@ function mediaSummary(m: Pick<LessonMedia, "duration" | "fileSize" | "width" | "
 export async function lessonCoursesScreen(ctx: BotContext): Promise<Screen> {
   const courses = await listLessonCourses();
   const kb = new InlineKeyboard();
-  for (const c of courses) kb.text(`${c.isActive ? "📚" : "⏸"} ${c.title} (${c.lessons})`, CBL.course(c.id)).row();
+  for (const c of courses) kb.text(`${c.isActive ? "📚" : "⏸"} ${c.title} (${c.lessons})${c.hasIntro ? " 🎥" : ""}`, CBL.course(c.id)).row();
   kb.text("➕ Video qo'shish", CBL.add).row();
   const text =
     "🎥 <b>Darslar (videolar)</b>\n\n" +
     (courses.length ? "Kursni tanlang yoki yangi video qo'shing." : "Hali kurslar yo'q — avval admin panelda kurs (mahsulot) yarating.") +
-    "\n\n💡 Eng tez yo'l: videoni shu chatga yuboring yoki Telegramdagi videoni forward qiling — bot kursni so'raydi.";
+    "\n\n🎥 — tanishtiruv videosi bor (sotib olishdan oldin hamma ko'radi)." +
+    "\n\n💡 Eng tez yo'l: videoni shu chatga yuboring yoki Telegramdagi videoni forward qiling — bot kursni va video turini so'raydi.";
   return { text, keyboard: withNav(kb, ctx.lang, CB.admin) };
 }
 
@@ -147,8 +155,13 @@ async function courseLessonsScreen(ctx: BotContext, productId: number, page: num
   const kb = new InlineKeyboard();
   p.items.forEach((l, i) => kb.text(`${offset + i + 1}. ${l.title}`.slice(0, 64), CBL.view(l.id)).row());
   withPagination(kb, p.page, p.pages, (n) => CBL.course(course.id, n));
-  kb.row().text("➕ Video qo'shish", CBL.addTo(course.id));
-  const text = `📚 <b>${escapeHtml(course.title)}</b>\n\n` + (lessons.length ? `🎬 Darslar: ${lessons.length} ta. Tahrirlash uchun darsni tanlang.` : "Bu kursda hali darslar yo'q.");
+  kb.row().text("➕ Dars qo'shish", CBL.addTo(course.id));
+  kb.row().text(course.videoFileId ? "🎥 Tanishtiruvni almashtirish" : "🎥 Tanishtiruv videosi qo'shish", CBL.intro(course.id));
+  if (course.videoFileId) kb.text("▶️ Tanishtiruv", CBL.introPlay(course.id));
+  const intro = course.videoFileId ? "🎥 Tanishtiruv videosi: bor (sotib olishdan oldin hamma ko'radi)" : "🎥 Tanishtiruv videosi: <b>yo'q</b> — qo'shsangiz, kursni tanlaganlar avval uni ko'radi";
+  const text =
+    `📚 <b>${escapeHtml(course.title)}</b>\n\n${intro}\n` +
+    (lessons.length ? `🎬 Darslar: ${lessons.length} ta (faqat xaridorlar). Tahrirlash uchun darsni tanlang.` : "🎬 Bu kursda hali darslar yo'q.");
   return { text, keyboard: withNav(kb, ctx.lang, CB.adminLessons) };
 }
 
@@ -220,8 +233,52 @@ async function askTitle(ctx: BotContext, media: LessonMedia, productId: number):
   await render(ctx, { text: `📚 Kurs: <b>${escapeHtml(course.title)}</b>\n\n✏️ Dars nomini kiriting:\n<i>Masalan: 1-dars: JavaScript Introduction</i>`, keyboard: kb });
 }
 
-async function acceptVideo(ctx: BotContext, media: LessonMedia, presetCourse: number | null): Promise<void> {
-  if (presetCourse) return askTitle(ctx, media, presetCourse);
+/** Kurs tanlangach: video tanishtiruvmi (hamma ko'radi) yoki darsmi (faqat xaridorlar) */
+async function askKind(ctx: BotContext, media: LessonMedia, productId: number): Promise<void> {
+  const course = await getLessonCourse(productId);
+  if (!course) {
+    await flow.delete(ctx.from!.id);
+    await ctx.reply("❌ Kurs topilmadi (o'chirilgan bo'lishi mumkin).");
+    return;
+  }
+  await flow.set(ctx.from!.id, { step: "pick_kind", media, productId: course.id });
+  const kb = new InlineKeyboard()
+    .text(course.videoFileId ? "🎥 Tanishtiruv videosi (almashtirish)" : "🎥 Tanishtiruv videosi", CBL.kind("i"))
+    .row()
+    .text("🎬 Dars (faqat xaridorlar)", CBL.kind("l"))
+    .row()
+    .text("❌ Bekor qilish", CBL.cancel);
+  await render(ctx, {
+    text:
+      `📚 Kurs: <b>${escapeHtml(course.title)}</b>\n\nBu video nima bo'ladi?\n\n` +
+      "🎥 <b>Tanishtiruv videosi</b> — kursni tanlagan har bir foydalanuvchi sotib olishdan oldin ko'radi.\n" +
+      "🎬 <b>Dars</b> — faqat kursni sotib olganlarga ochiladi.",
+    keyboard: kb,
+  });
+}
+
+async function saveIntro(ctx: BotContext, media: LessonMedia, productId: number): Promise<void> {
+  const res = await setIntroVideo(productId, media);
+  if (res === "not_video") {
+    await ctx.reply("⚠️ Tanishtiruv uchun videoni <b>oddiy video</b> sifatida yuboring (fayl sifatida emas) — shunda u Telegram pleerida ochiladi.", {
+      parse_mode: "HTML",
+    });
+    return;
+  }
+  if (res === "no_course") {
+    await ctx.reply("❌ Kurs topilmadi (o'chirilgan bo'lishi mumkin).");
+    return;
+  }
+  const course = await getLessonCourse(productId);
+  await audit(ctx.admin?.id ?? null, "set_intro_video", "product", productId, null, { fileUniqueId: media.fileUniqueId });
+  await ctx.reply(
+    `✅ Tanishtiruv videosi saqlandi.\n\n📚 Kurs: <b>${escapeHtml(course?.title ?? "—")}</b>\nEndi kursni tanlaganlar avval shu videoni ko'radi, keyin narx va «Sotib olish» chiqadi.`,
+    { parse_mode: "HTML", reply_markup: new InlineKeyboard().text("📋 Kursga qaytish", CBL.course(productId)) },
+  );
+}
+
+async function acceptVideo(ctx: BotContext, media: LessonMedia, preset: { productId: number; intro: boolean } | null): Promise<void> {
+  if (preset) return preset.intro ? saveIntro(ctx, media, preset.productId) : askTitle(ctx, media, preset.productId);
   const kb = await coursePicker();
   if (!kb) {
     await ctx.reply("❌ Hali kurslar yo'q. Avval admin panelda kurs (mahsulot) yarating.");
@@ -320,7 +377,9 @@ managers.on("message", async (ctx, next) => {
 
   if (res.ok) {
     const state = await flow.get(id);
-    return acceptVideo(ctx, res.media, state?.step === "await_video" ? state.productId : null);
+    const preset = state?.step === "await_video" && state.productId ? { productId: state.productId, intro: state.intro } : null;
+    if (preset?.intro) await flow.delete(id);
+    return acceptVideo(ctx, res.media, preset);
   }
 
   const state = await flow.get(id);
@@ -336,7 +395,7 @@ managers.on("message", async (ctx, next) => {
     await handleText(ctx, msg.text, state);
     return;
   }
-  if (state.step === "await_video" || state.step === "pick_course") {
+  if (state.step === "await_video" || state.step === "pick_course" || state.step === "pick_kind") {
     await ctx.reply(REJECTION_TEXT[res.reason], { parse_mode: "HTML", reply_markup: cancelKb() });
     return;
   }
@@ -375,7 +434,45 @@ managers.callbackQuery(/^al:pick:(\d{1,9})$/, async (ctx) => {
     await ctx.answerCallbackQuery({ text: "Avval video yuboring yoki forward qiling", show_alert: true });
     return;
   }
-  await askTitle(ctx, state.media, Number(ctx.match[1]));
+  await askKind(ctx, state.media, Number(ctx.match[1]));
+});
+
+managers.callbackQuery(/^al:kind:([il])$/, async (ctx) => {
+  const state = await flow.get(ctx.from.id);
+  if (state?.step !== "pick_kind") {
+    await ctx.answerCallbackQuery({ text: "Bu amal eskirgan — videoni qaytadan yuboring", show_alert: true });
+    return;
+  }
+  if (ctx.match[1] === "l") return askTitle(ctx, state.media, state.productId);
+  await flow.delete(ctx.from.id);
+  await saveIntro(ctx, state.media, state.productId);
+});
+
+managers.callbackQuery(/^al:intro:(\d{1,9})$/, async (ctx) => {
+  const course = await getLessonCourse(Number(ctx.match[1]));
+  if (!course) {
+    await ctx.answerCallbackQuery({ text: "Kurs topilmadi", show_alert: true });
+    return;
+  }
+  await flow.set(ctx.from.id, { step: "await_video", productId: course.id, intro: true });
+  await ctx.reply(`🎥 <b>${escapeHtml(course.title)}</b> uchun tanishtiruv videosini yuboring yoki forward qiling.\n\n<i>Kursni tanlagan har bir foydalanuvchi sotib olishdan oldin shu videoni ko'radi.</i>`, {
+    parse_mode: "HTML",
+    reply_markup: cancelKb(),
+  });
+});
+
+managers.callbackQuery(/^al:introplay:(\d{1,9})$/, async (ctx) => {
+  const course = await getLessonCourse(Number(ctx.match[1]));
+  if (!course?.videoFileId) {
+    await ctx.answerCallbackQuery({ text: "Tanishtiruv videosi yo'q", show_alert: true });
+    return;
+  }
+  try {
+    await ctx.replyWithVideo(course.videoFileId, { caption: `🎥 ${escapeHtml(course.title)} — tanishtiruv videosi`, parse_mode: "HTML" });
+  } catch (err) {
+    if (!isUnavailableFileError(err)) throw err;
+    await ctx.reply("⚠️ Tanishtiruv videosi Telegram'da topilmadi. Uni qaytadan yuboring (🎥 Tanishtiruvni almashtirish).");
+  }
 });
 
 managers.callbackQuery(CBL.useCaption, async (ctx) => {

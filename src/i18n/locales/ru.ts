@@ -128,6 +128,7 @@ export const ru: Messages = {
   course_no_lessons: "🎬 Уроки ещё не добавлены. Они появятся здесь сразу после добавления.",
   course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nВыберите курс из набора 👇",
   lessons_title: "🎬 <b>{mahsulot}</b> — уроки ({soni})\n\n🔒 Чтобы смотреть уроки, купите курс.",
+  intro_video_caption: "🎥 <b>{mahsulot}</b> — вводное видео\n\nПосмотрите видео, подробности о курсе и цена — ниже 👇",
   btn_lessons: "🎬 Уроки ({soni})",
   btn_channel_link: "🔗 Ссылка на канал",
   lesson_locked: "🔒 Чтобы пользоваться этим уроком, сначала нужно купить курс.",

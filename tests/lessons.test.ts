@@ -213,6 +213,8 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     expect(lastButtons().some((b) => b.callback_data === `al:pick:${course.id}`)).toBe(true);
 
     await send(callback(`al:pick:${course.id}`, ADMIN));
+    expect(lastText()).toContain("Bu video nima bo'ladi?");
+    await send(callback("al:kind:l", ADMIN));
     expect(lastText()).toContain("Dars nomini kiriting");
     await send(text("1-dars: JavaScript Introduction", ADMIN));
     expect(lastText()).toContain("Video kursga muvaffaqiyatli qo'shildi");
@@ -255,23 +257,23 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     expect(await prisma.lesson.count()).toBe(0);
 
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "dup"), callback(`al:pick:${course.id}`, ADMIN), text("Dars", ADMIN));
-    await send(video(ADMIN, "dup"), callback(`al:pick:${course.id}`, ADMIN));
+    await send(video(ADMIN, "dup"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Dars", ADMIN));
+    await send(video(ADMIN, "dup"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN));
     expect(lastText()).toContain("allaqachon qo'shilgan");
     expect(await prisma.lesson.count()).toBe(1);
   });
 
   it("menyu tugmasi nom kutilayotganda bosilsa — oqim to'xtaydi, dars menyu nomi bilan yaratilmaydi", async () => {
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN), callback(`al:pick:${course.id}`, ADMIN), text(uz.menu_help, ADMIN));
+    await send(video(ADMIN), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text(uz.menu_help, ADMIN));
     expect(await prisma.lesson.count()).toBe(0);
     expect(lastText()).toContain("Yordam");
   });
 
   it("admin: nomini o'zgartirish, tartib, o'chirish", async () => {
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "a"), callback(`al:pick:${course.id}`, ADMIN), text("Birinchi", ADMIN));
-    await send(video(ADMIN, "b"), callback(`al:pick:${course.id}`, ADMIN), text("Ikkinchi", ADMIN));
+    await send(video(ADMIN, "a"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Birinchi", ADMIN));
+    await send(video(ADMIN, "b"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Ikkinchi", ADMIN));
     const [a, b] = await prisma.lesson.findMany({ orderBy: { sortOrder: "asc" } });
 
     await send(callback(`al:rn:${a.id}`, ADMIN), text("Kirish darsi", ADMIN));
@@ -291,7 +293,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
   it("TEST 5: kursni sotib olgan foydalanuvchiga video file_id orqali yuboriladi", async () => {
     await makeBuyer("js");
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "v1"), callback(`al:pick:${course.id}`, ADMIN), text("Kirish", ADMIN));
+    await send(video(ADMIN, "v1"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Kirish", ADMIN));
     const lesson = await prisma.lesson.findFirstOrThrow();
     calls = [];
 
@@ -309,7 +311,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
   it("TEST 6: sotib olmagan foydalanuvchiga video yuborilmaydi (dars ID si qo'lda yuborilsa ham)", async () => {
     await makeBuyer("py"); // boshqa kursning egasi
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "v2"), callback(`al:pick:${course.id}`, ADMIN), text("Yopiq dars", ADMIN));
+    await send(video(ADMIN, "v2"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Yopiq dars", ADMIN));
     const lesson = await prisma.lesson.findFirstOrThrow();
     calls = [];
 
@@ -327,7 +329,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
   it("kurs sotuvdan olinsa ham xaridor katalogda ko'radi, darslar ochiladi; boshqalar ko'rmaydi", async () => {
     await makeBuyer("js");
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "inact"), callback(`al:pick:${course.id}`, ADMIN), text("Dars", ADMIN));
+    await send(video(ADMIN, "inact"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Dars", ADMIN));
     await prisma.product.update({ where: { id: course.id }, data: { isActive: false } });
     calls = [];
     await send(callback("nav:cat:1"));
@@ -348,26 +350,52 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
     await prisma.product.update({ where: { code: "js" }, data: { videoFileId: "intro-js", description: "JavaScript asoslari" } });
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "main1"), callback(`al:pick:${course.id}`, ADMIN), text("Asosiy dars", ADMIN));
+    await send(video(ADMIN, "main1"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Asosiy dars", ADMIN));
     calls = [];
 
     await send(callback("p:js"));
-    const intro = calls.find((c) => c.method === "sendVideo");
-    expect(intro?.payload.video).toBe("intro-js"); // tanishtiruv (preview) videosi — ochiq
-    expect(String(intro?.payload.caption)).toContain("JavaScript asoslari");
-    expect(String(intro?.payload.caption)).toContain("500 000");
-    const kb = buttons(intro);
+    // Avval tanishtiruv videosi, keyin alohida xabarda tavsif, narx va «Sotib olish»
+    const order = calls.filter((c) => c.method === "sendVideo" || c.method === "sendMessage");
+    expect(order.map((c) => c.method)).toEqual(["sendVideo", "sendMessage"]);
+    const [intro, info] = order;
+    expect(intro.payload.video).toBe("intro-js"); // tanishtiruv (preview) videosi — ochiq
+    expect(String(intro.payload.caption)).toContain("tanishtiruv videosi");
+    expect(String(info.payload.text)).toContain("JavaScript asoslari");
+    expect(String(info.payload.text)).toContain("500 000");
+    const kb = buttons(info);
     expect(kb.some((b) => b.callback_data === "buy:js")).toBe(true);
     expect(kb.some((b) => b.callback_data === "nav:cat:1")).toBe(true); // ⬅️ Ortga
-    expect(kb.some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
+    expect([...kb, ...buttons(intro)].some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
     // Asosiy dars videosi yuborilmagan
     expect(calls.filter((c) => c.method === "sendVideo").map((c) => c.payload.video)).toEqual(["intro-js"]);
+  });
+
+  it("admin tanishtiruv videosini botdan qo'shadi: video → kurs → «Tanishtiruv videosi»; dars yaratilmaydi, foydalanuvchiga avval shu video", async () => {
+    const course = await prisma.product.findUniqueOrThrow({ where: { code: "py" } });
+    expect(course.videoFileId).toBeNull();
+    await send(video(ADMIN, "intro1"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:i", ADMIN));
+    expect(lastText()).toContain("Tanishtiruv videosi saqlandi");
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: course.id } })).videoFileId).toBe("vid-intro1");
+    expect(await prisma.lesson.count()).toBe(0);
+
+    // Kurs ekranidan almashtirish: kurs oldindan tanlangan — video darhol tanishtiruv bo'ladi
+    await send(callback(`al:intro:${course.id}`, ADMIN), video(ADMIN, "intro2"));
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: course.id } })).videoFileId).toBe("vid-intro2");
+    // «Fayl sifatida» yuborilgan video tanishtiruvga yaramaydi (sendVideo bilan ochilmaydi)
+    await send(callback(`al:intro:${course.id}`, ADMIN), msg(ADMIN, { document: { file_id: "doc-v", file_unique_id: "dv", mime_type: "video/mp4" } }));
+    expect(lastText()).toContain("oddiy video");
+    expect((await prisma.product.findUniqueOrThrow({ where: { id: course.id } })).videoFileId).toBe("vid-intro2");
+
+    await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
+    calls = [];
+    await send(callback("p:py"));
+    expect(calls.find((c) => c.method === "sendVideo")?.payload.video).toBe("vid-intro2");
   });
 
   it("TEST 8 + 9: to'lov tasdiqlanadi — buyurtma va kirish bazada, «To'lov muvaffaqiyatli» + «📚 Kursni boshlash» (xaridlar bo'limisiz); darslar ochiladi", async () => {
     const user = await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "main2"), callback(`al:pick:${course.id}`, ADMIN), text("1-dars", ADMIN));
+    await send(video(ADMIN, "main2"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("1-dars", ADMIN));
     await send(callback("buy:js"));
     const order = await prisma.order.findFirstOrThrow({ where: { userId: user.id } });
     await prisma.order.update({ where: { id: order.id }, data: { status: "receipt_sent" } });
@@ -404,7 +432,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
   it("muddati o'tgan yoki bekor qilingan kirish bilan video yuborilmaydi", async () => {
     const user = await makeBuyer("js");
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "v3"), callback(`al:pick:${course.id}`, ADMIN), text("Dars", ADMIN));
+    await send(video(ADMIN, "v3"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Dars", ADMIN));
     const lesson = await prisma.lesson.findFirstOrThrow();
     await prisma.accessGrant.updateMany({ where: { userId: user.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
     calls = [];
@@ -416,7 +444,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
   it("Telegram'da video topilmasa — foydalanuvchiga tushunarli xabar, stack trace yo'q", async () => {
     await makeBuyer("js");
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "v4"), callback(`al:pick:${course.id}`, ADMIN), text("Dars", ADMIN));
+    await send(video(ADMIN, "v4"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Dars", ADMIN));
     const lesson = await prisma.lesson.findFirstOrThrow();
     failVideo = new GrammyError("Call to 'sendVideo' failed!", { ok: false, error_code: 400, description: "Bad Request: wrong file identifier/HTTP URL specified" }, "sendVideo", {});
     calls = [];
@@ -426,7 +454,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
 
   it("TEST 12: ko'p foydalanuvchi bir vaqtda video so'raydi — barchasi yuboriladi, event loop bloklanmaydi", async () => {
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
-    await send(video(ADMIN, "bulk"), callback(`al:pick:${course.id}`, ADMIN), text("Ommaviy", ADMIN));
+    await send(video(ADMIN, "bulk"), callback(`al:pick:${course.id}`, ADMIN), callback("al:kind:l", ADMIN), text("Ommaviy", ADMIN));
     const lesson = await prisma.lesson.findFirstOrThrow();
     const N = 40;
     for (let i = 0; i < N; i++) {

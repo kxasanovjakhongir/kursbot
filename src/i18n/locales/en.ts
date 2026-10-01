@@ -129,6 +129,7 @@ export const en: Messages = {
   course_no_lessons: "🎬 No lessons yet. They will appear here as soon as they're added.",
   course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nPick a course from the bundle 👇",
   lessons_title: "🎬 <b>{mahsulot}</b> — lessons ({soni})\n\n🔒 Buy the course to watch the lessons.",
+  intro_video_caption: "🎥 <b>{mahsulot}</b> — intro video\n\nWatch the video; course details and price are below 👇",
   btn_lessons: "🎬 Lessons ({soni})",
   btn_channel_link: "🔗 Channel link",
   lesson_locked: "🔒 You need to buy the course before you can use this lesson.",

@@ -146,6 +146,7 @@ export const uz = {
   course_no_lessons: "🎬 Darslar hali qo'shilmagan. Qo'shilishi bilan shu yerda paydo bo'ladi.",
   course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nTo'plamdagi kursni tanlang 👇",
   lessons_title: "🎬 <b>{mahsulot}</b> — darslar ({soni} ta)\n\n🔒 Darslarni ko'rish uchun kursni xarid qiling.",
+  intro_video_caption: "🎥 <b>{mahsulot}</b> — tanishtiruv videosi\n\nVideoni ko'rib chiqing, kurs haqida batafsil ma'lumot va narx pastda 👇",
   btn_lessons: "🎬 Darslar ({soni})",
   btn_channel_link: "🔗 Kanal havolasi",
   lesson_locked: "🔒 Bu darslikdan foydalanish uchun avval kursni xarid qilishingiz kerak.",

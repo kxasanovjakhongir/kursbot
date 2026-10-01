@@ -10,7 +10,7 @@ import { escapeHtml, stripHtml, truncate } from "../lib/format";
  * Kurs darslari (videolar). Video serverga yuklab olinmaydi va qayta yuklanmaydi: admin botga yuborgan
  * (yoki forward qilgan) xabardagi Telegram file_id saqlanadi, mijozga ham shu file_id orqali yuboriladi.
  *
- * Hajm bo'yicha ilovada sun'iy limit yo'q. Telegram cheklovlari:
+ * Hajm bo'yicha kodda sun'iy limit yo'q. Telegram cheklovlari:
  *  - botga keladigan video/fayl: oddiy hisobdan 2 GB gacha, Telegram Premium hisobdan 4 GB gacha
  *    (bu limitdan katta faylni Telegram'ning o'zi yubortirmaydi — bot uni umuman ko'rmaydi);
  *  - file_id orqali qayta yuborish (sendVideo/sendDocument) — hajmga bog'liq emas, chunki fayl Telegram'da turibdi;

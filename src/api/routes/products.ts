@@ -158,7 +158,7 @@ export function productsRouter(rt: BotRuntime): Router {
   /**
    * O'chirish. Hech kim ishlatmagan mahsulot bazadan butunlay o'chiriladi. Buyurtmasi bor bo'lsa —
    * "yumshoq" o'chiriladi: buyurtmalar, tushum va xaridorlarning kirishi saqlanadi, mahsulot esa
-   * panel, bot va Mini App'dan yo'qoladi, kodi bo'shatiladi (shu kod bilan yangi kurs ochish mumkin).
+   * panel va botdan yo'qoladi, kodi bo'shatiladi (shu kod bilan yangi kurs ochish mumkin).
    * To'lanmagan ochiq buyurtmalar bekor qilinadi; chek tekshirilayotgan bo'lsa — avval ko'rib chiqish kerak.
    */
   r.delete("/:id", async (req, res) => {

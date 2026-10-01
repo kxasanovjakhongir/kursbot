@@ -61,7 +61,7 @@ export async function grantAccess(api: Api, order: Order, userTgId: bigint): Pro
   return result;
 }
 
-/** "Mening xaridlarim" — linkni qayta olish: eski link bekor qilinadi, yangisi yaratiladi */
+/** Kurs sahifasidagi «🔗 Kanal havolasi» — linkni qayta olish: eski link bekor qilinadi, yangisi yaratiladi */
 export async function refreshInviteLink(api: Api, grantId: bigint, userTgId: bigint): Promise<GrantWithProduct | null> {
   const grant = await prisma.accessGrant.findUnique({ where: { id: grantId }, include: { product: true, user: true } });
   if (!grant || grant.revokedAt || grant.user.telegramId !== userTgId) return null;

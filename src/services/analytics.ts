@@ -7,7 +7,7 @@ import { percent } from "./campaignLinks";
  * Kunlar Toshkent vaqti bo'yicha. Hamma hisob bazada (agregat so'rovlar), JS da katta massivlar yo'q.
  *
  * Funnel bosqichlari (botdagi haqiqiy tartib):
- *   bosish (/l/<kod>) → kirish (/start yoki Mini App) → ro'yxatdan o'tish (telefon) →
+ *   bosish (/l/<kod>) → kirish (/start) → ro'yxatdan o'tish (telefon) →
  *   kursni ko'rish → buyurtma (lead) → to'lov (purchase)
  * Unique foydalanuvchi — Telegram ID; takroriy /start yangi foydalanuvchi hisoblanmaydi.
  */
@@ -17,6 +17,7 @@ export interface Range {
 }
 
 const TZ = "Asia/Tashkent";
+// "webapp_open" — olib tashlangan Mini App'ning tarixiy hodisalari: o'tgan davrlar hisoboti o'zgarmasligi uchun sanaladi
 const START_EVENTS = ["start", "webapp_open"];
 // Eski yozuvlar: botda kurs ko'rsatilishi "video" nomi bilan yozilgan (via siz)
 const VIEW_CONDITION = `(e.name = 'product_view' OR (e.name = 'video' AND e.payload->>'via' IS NULL))`;
@@ -53,7 +54,7 @@ export async function overview({ from, to }: Range): Promise<Overview> {
         (SELECT count(DISTINCT user_id) FROM orders WHERE status::text = ANY(${paid}) AND paid_at >= ${from} AND paid_at < ${to}) AS buyers,
         (SELECT sum(amount) FROM orders WHERE status::text = ANY(${paid}) AND paid_at >= ${from} AND paid_at < ${to}) AS revenue`,
     // Ketma-ket (kohorta) funnel: har bir bosqich — oldingi bosqichdan o'tganlar ichidan, shuning uchun
-    // sonlar hech qachon oshmaydi. Kohorta — davrda botga yoki Mini App'ga kirgan foydalanuvchilar
+    // sonlar hech qachon oshmaydi. Kohorta — davrda botga kirgan foydalanuvchilar
     prisma.$queryRawUnsafe<{ clicks: bigint; started: bigint; registered: bigint; viewed: bigint; ordered: bigint; purchased: bigint }[]>(
       `WITH s AS (SELECT DISTINCT user_id FROM events WHERE user_id IS NOT NULL AND name = ANY($3) AND created_at >= $1 AND created_at < $2),
             r AS (SELECT s.user_id FROM s JOIN users u ON u.id = s.user_id WHERE u.phone IS NOT NULL),

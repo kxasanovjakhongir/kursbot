@@ -8,8 +8,7 @@ import { createBot } from "./bot/bot";
 import { setRetryDatabaseErrors } from "./bot/middleware/errorBoundary";
 import { syncEnvSuperAdmins } from "./services/admins";
 import { resolveBotToken } from "./services/botToken";
-import { syncBotMenu, syncMenuButton } from "./services/botConfig";
-import { DEFAULT_LANG, label } from "./i18n";
+import { resetMenuButton, syncBotMenu } from "./services/botConfig";
 import { startBackgroundJobs } from "./services/jobs";
 import { createApp } from "./api/app";
 import { lifecycle } from "./lib/lifecycle";
@@ -25,12 +24,13 @@ async function main() {
   const bot = createBot(token);
   await bot.init();
   logger.info(
-    { bot: bot.botInfo.username, mode: config.BOT_MODE, tokenSource: source, webApp: config.WEB_APP_URL ?? null, concurrency: config.BOT_CONCURRENCY },
+    { bot: bot.botInfo.username, mode: config.BOT_MODE, tokenSource: source, concurrency: config.BOT_CONCURRENCY },
     "bot ishga tushmoqda",
   );
 
   await syncBotMenu(bot.api).catch(() => undefined);
-  await syncMenuButton(bot.api, config.WEB_APP_URL, label(DEFAULT_LANG, "menu_button_app"));
+  // Avvalgi versiyadagi Mini App "Menu" tugmasi chatlardan olib tashlanadi
+  await resetMenuButton(bot.api);
 
   let webhook: Parameters<typeof createApp>[0]["webhook"];
   if (config.BOT_MODE === "webhook") {

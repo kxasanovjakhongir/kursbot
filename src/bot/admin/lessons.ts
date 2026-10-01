@@ -257,7 +257,7 @@ async function saveLesson(ctx: BotContext, media: LessonMedia, productId: number
   );
 }
 
-const MENU_KEYS: TextKey[] = ["menu_products", "menu_help", "menu_admin", "menu_purchases", "menu_profile", "menu_settings", "btn_cancel"];
+const MENU_KEYS: TextKey[] = ["menu_products", "menu_help", "menu_admin", "menu_profile", "menu_settings", "btn_cancel"];
 const menuLabels = new Set(MENU_KEYS.flatMap((k) => allLabels(k)));
 
 /** Holat kutayotgan matn: menyu tugmasi yoki buyruq bosilsa — oqim to'xtatiladi va xabar odatdagidek ishlanadi */
@@ -358,7 +358,7 @@ managers.callbackQuery([CBL.add, /^al:add:(\d{1,9})$/], async (ctx) => {
   const target = course ? `\n📚 Kurs: <b>${escapeHtml(course.title)}</b>` : "";
   await ctx.reply(
     `🎥 Video yuboring yoki Telegramdan video forward qiling.${target}\n\n` +
-      "<i>Video serverga yuklab olinmaydi — Telegram'ning o'zida saqlanadi. Ilovada hajm cheklovi yo'q: " +
+      "<i>Video serverga yuklab olinmaydi — Telegram'ning o'zida saqlanadi. Botda hajm cheklovi yo'q: " +
       "Telegram qabul qilgan video (2 GB gacha, Premium hisobdan 4 GB gacha) qo'shiladi.</i>",
     { parse_mode: "HTML", reply_markup: cancelKb() },
   );

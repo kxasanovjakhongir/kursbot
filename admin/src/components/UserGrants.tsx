@@ -44,7 +44,7 @@ export function UserGrants({ user, onChanged }: { user: TelegramUserDetail; onCh
     setBusy(true);
     try {
       await api.put(`/telegram-users/${user.id}/grants/${editing.id}/expiry`, { expiresAt });
-      toast.success(editing.revokedAt ? "Kirish tiklandi — foydalanuvchi linkni «Mening xaridlarim» dan oladi" : "Muddat saqlandi");
+      toast.success(editing.revokedAt ? "Kirish tiklandi — foydalanuvchi linkni botdagi kurs sahifasidan oladi" : "Muddat saqlandi");
       setEditing(null);
       onChanged();
     } catch (err) {

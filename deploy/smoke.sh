@@ -11,7 +11,6 @@ check() {
 check "health"            "$BASE/health" 200
 check "ready"             "$BASE/ready" 200
 check "admin panel"       "$BASE/" 200
-check "mini app"          "$BASE/app/" 200
 check "api himoyalangan"  "$BASE/api/dashboard" 401
 check "metrics yopiq"     "$BASE/metrics" "401|404"
 

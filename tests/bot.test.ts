@@ -179,8 +179,8 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     expect(buttons(menu).map((b) => b.text)).toEqual([uz.menu_products, uz.menu_help]);
     expect(textOf(lastScreen())).toContain("Darsliklar");
     expect(hasButton(lastScreen(), "p:4b")).toBe(true);
-    // Mini App kirish nuqtasi (WEB_APP_URL dan, kodda hardcode emas)
-    expect(buttons(lastScreen())[0]).toMatchObject({ text: uz.btn_open_app, web_app: { url: "https://app.example.uz/app/" } });
+    // Mini App olib tashlangan: hech qanday web_app tugmasi yo'q
+    expect(buttons(lastScreen()).some((b) => b.web_app)).toBe(false);
 
     calls = [];
     await send(text("/start"));

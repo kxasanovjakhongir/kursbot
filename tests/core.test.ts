@@ -7,7 +7,6 @@ import { TtlMap } from "../src/lib/ttlMap";
 import { paginate } from "../src/bot/ui/render";
 import { classifyError } from "../src/bot/middleware/errorBoundary";
 import { formatDate, stripHtml, truncate } from "../src/lib/format";
-import { InitDataError, signInitData, verifyInitData } from "../src/lib/telegramAuth";
 import { safeFileName, sniffFileType } from "../src/lib/fileType";
 
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
@@ -37,7 +36,7 @@ describe("i18n", () => {
 
   it("tugma yozuvlari: barcha tillardagi variantlar, o'zgaruvchi to'ldiriladi", () => {
     expect(allLabels("menu_products")).toEqual(["📚 Darsliklar", "📚 Учебники", "📚 Textbooks"]);
-    expect(label("en", "btn_get_link", { mahsulot: "4B" })).toBe("🔗 4B");
+    expect(label("en", "btn_join", { mahsulot: "4B" })).toBe("➡️ Join the channel: 4B");
   });
 
   it("Telegram tilidan taxmin", () => {
@@ -121,30 +120,6 @@ describe("format yordamchilari", () => {
     expect(stripHtml("<b>Salom</b> &lt;do'st&gt;")).toBe("Salom <do'st>");
     expect(truncate("abcdefgh", 5)).toBe("abcd…");
     expect(truncate("abc", 5)).toBe("abc");
-  });
-});
-
-describe("Telegram Mini App initData", () => {
-  const token = "123:abc";
-  const now = Date.UTC(2026, 8, 24, 12, 0, 0);
-  const authDate = String(Math.floor(now / 1000) - 60);
-  const user = JSON.stringify({ id: 42, first_name: "Aziz", username: "aziz", photo_url: "https://t.me/i/userpic/1.jpg" });
-
-  it("to'g'ri imzo qabul qilinadi, maydonlar o'qiladi", () => {
-    const data = signInitData({ auth_date: authDate, user, start_param: "4b" }, token);
-    const v = verifyInitData(data, token, 3600, now);
-    expect(v.user).toMatchObject({ id: 42, first_name: "Aziz" });
-    expect(v.startParam).toBe("4b");
-  });
-
-  it("boshqa token, o'zgartirilgan maydon, eskirgan va buzuq ma'lumot rad etiladi", () => {
-    const data = signInitData({ auth_date: authDate, user }, token);
-    expect(() => verifyInitData(data, "123:other", 3600, now)).toThrow(InitDataError);
-    expect(() => verifyInitData(data.replace("Aziz", "Vali"), token, 3600, now)).toThrow(InitDataError);
-    expect(() => verifyInitData(data, token, 30, now)).toThrow(/eskirgan/);
-    expect(() => verifyInitData("user=x", token, 3600, now)).toThrow(InitDataError);
-    const badUser = signInitData({ auth_date: authDate, user: JSON.stringify({ id: "42", first_name: 1 }) }, token);
-    expect(() => verifyInitData(badUser, token, 3600, now)).toThrow(/user/);
   });
 });
 

@@ -4,16 +4,6 @@
  */
 export type SniffedType = "jpeg" | "png" | "webp" | "gif" | "pdf" | "mp4" | "webm";
 
-export const MIME_OF: Record<SniffedType, string> = {
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-  pdf: "application/pdf",
-  mp4: "video/mp4",
-  webm: "video/webm",
-};
-
 const startsWith = (buf: Buffer, bytes: number[], offset = 0) => bytes.every((b, i) => buf[offset + i] === b);
 
 export function sniffFileType(buf: Buffer): SniffedType | null {

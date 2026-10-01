@@ -1,7 +1,6 @@
 # Darsliklar savdosi uchun Telegram bot + Admin panel
 
-- **Bot** — TZ v2.1, 2-variant (yarim avtomat): deep link, telefon, video, buyurtma, karta, chek, admin tasdiqlashi, bir martalik kanal linki. Bosh menyu, profil, sozlamalar (til, yangiliklar), yordam, bildirishnomalar, botning o'zidagi admin panel; 3 til (uz/ru/en).
-- **Telegram Mini App** (`webapp/`) — bot ichida ochiladigan mobil ilova: darsliklar, buyurtma va to'lov (chekni yuklash), xaridlar va kanal linki, bildirishnomalar, profil va sozlamalar, adminlar uchun statistika, cheklarni tasdiqlash va foydalanuvchilar. Telegram temasiga moslashadi (light/dark).
+- **Bot** — TZ v2.1, 2-variant (yarim avtomat): deep link, telefon, tanishtiruv video, buyurtma, karta, chek, admin tasdiqlashi, bir martalik kanal linki, kurs darslari (video, Telegram `file_id`). Yordam, botning o'zidagi admin panel; 3 til (uz/ru/en).
 - **Admin panel** — veb-panel: dashboard, foydalanuvchilar, xabarlar tarixi, broadcast, bot buyruqlari va menyusi, sozlamalar, maintenance, adminlar, faoliyat loglari, buyurtmalar.
 
 Stek: Node.js 20+, TypeScript (strict), grammY, Express 5, PostgreSQL + Prisma, JWT + bcrypt · React 19, Vite, Tailwind 4, React Router, Axios, Lucide.
@@ -29,7 +28,7 @@ src/
     context.ts      BotContext: user, admin, role, lang, t(), label(), log
     middleware/     requestLog, errorBoundary, autoAnswer, throttle, identify, accessGuard
     ui/             render (ekranni joyida tahrirlash, loading, pagination), callback nomlari
-    screens/        ekranlar: home, catalog (darslik, to'lov), purchases, account (profil, sozlamalar, til, yordam, bildirishnomalar), admin
+    screens/        ekranlar: home, catalog (darslik, to'lov), lessons (kurs darslari), account (profil, sozlamalar, til, yordam, bildirishnomalar), admin
     handlers/       mijoz oqimi, navigatsiya, chek, kanalga qo'shilish, bazadagi buyruqlar
     admin/          chek kartochkasi, tasdiqlash/rad etish, admin buyruqlari, inline admin panel
     keyboards.ts    pastki menyu, navigatsiya (⬅️ Orqaga / 🏠 Bosh menyu), pagination
@@ -38,81 +37,35 @@ src/
     app.ts          Express: helmet, CORS, rate limit, marshrutlar (har biri o'z ruxsati bilan), global xato ushlagich
     auth.ts         JWT, requireAuth, requirePermission
     routes/         auth, dashboard, bot, commands, menu, telegram-users, messages, broadcast, admins, activity-logs, errors, orders
-    webapp/         Mini App API (/api/app): initData auth, katalog, buyurtma, chek, xaridlar, admin
 admin/              React admin panel (Vite) — xodimlar uchun (email + parol)
-webapp/             Telegram Mini App (React, Vite, Tailwind) — mijozlar va Telegram adminlari uchun
 prisma/             sxema, migratsiyalar, seed
 tests/              unit (i18n, rollar, yordamchilar) + integratsion (servislar, API, bot oqimlari)
 ```
 
 ## Bot (foydalanuvchi uchun)
 
-Pastki menyu: **📚 Darsliklar · 🧾 Mening xaridlarim · 👤 Profil · ⚙️ Sozlamalar · 💬 Yordam**. Adminlarda qo'shimcha **🛠 Admin panel** tugmasi bor.
+Pastki menyu: **📚 Darsliklar · 💬 Yordam**. Adminlarda qo'shimcha **🛠 Admin panel** tugmasi bor (boshqalarga ko'rinmaydi, qo'lda yozilsa — rad javobi).
 
 - Inline tugmalar bosilganda yangi xabar yuborilmaydi, o'sha xabar tahrirlanadi. Har bir ichki ekranda **⬅️ Orqaga** va **🏠 Bosh menyu** tugmalari bor. Ro'yxatlar sahifalarga bo'lingan (◀️ 1/3 ▶️).
 - To'lov ma'lumoti alohida xabar bo'lib keladi. Unda karta raqamini bir bosishda nusxalash va buyurtmani **tasdiqlash oynasi orqali** bekor qilish mumkin.
 - Profilda: ism, username, Telegram ID, telefon (yangilash mumkin), til, ro'yxatdan o'tgan sana, darsliklar, buyurtmalar va jami to'lov soni. Bildirishnomalar tarixi ham shu yerda.
 - Sozlamalarda: til (🇺🇿/🇷🇺/🇬🇧) va yangiliklarni o'chirish. Buyurtma bo'yicha xabarlar har doim yuboriladi.
 - Og'ir ekranlar ochilayotganda "⏳ Ma'lumotlar yuklanmoqda..." ko'rinadi. Noma'lum buyruq, eskirgan tugma, xato, spam yoki cheklov bo'lsa, foydalanuvchi o'z tilida tushunarli xabar oladi. Texnik tafsilotlar faqat logga va `TECH_CHAT_ID` ga yoziladi.
-- Buyruqlar: `/start`, `/menu`, `/purchases`, `/profile`, `/settings`, `/help`. Paneldagi bir xil nomli buyruq ustun turadi.
+- Buyruqlar: `/start`, `/menu`, `/profile`, `/settings`, `/help`. Paneldagi bir xil nomli buyruq ustun turadi.
 
 **Matnlar** `src/i18n/locales/*.ts` fayllarida saqlanadi. Yangi til qo'shish uchun `Messages` typida fayl yarating va uni `LANGS` ga qo'shing. Biror kalit tushib qolsa, TypeScript xato beradi. Testlar esa `{o'zgaruvchilar}` va HTML teglari barcha tillarda bir xilligini tekshiradi. `texts` jadvali (`key`, `lang`) matnni bazadan ustidan yozishga imkon beradi. Foydalanuvchi tili = u tanlagan til, tanlamagan bo'lsa paneldagi "Standart til".
 
-## Telegram Mini App
+## Kurs oqimi
 
-Bot — kirish nuqtasi. `WEB_APP_URL` berilsa, katalog va bosh menyuda **📱 Ilovani ochish** (`web_app`) tugmasi paydo bo'ladi, chatdagi **Menu** tugmasi esa Mini App'ni ochadi (server ishga tushganda o'rnatiladi). Chat orqali ishlash ham to'liq saqlangan.
-
-| Bot funksiyasi | Mini App |
-|---|---|
-| 📚 Darsliklar, video | **Asosiy** → darslik sahifasi (video bot chatiga yuboriladi) |
-| Olaman → to'lov → chek | **Buyurtma**: karta (nusxalash), chekni yuklash (JPG/PNG/PDF), bekor qilish |
-| 🧾 Mening xaridlarim | **Xaridlar**: "Darsliklarim" (kanalga kirish) va "Buyurtmalar" |
-| Bildirishnomalar | **Xabarlar** |
-| Profil, telefon, til, yangiliklar, yordam | **Profil** |
-| Admin: statistika, cheklar, foydalanuvchilar | **Admin** tabi (faqat Telegram adminlari) |
-
-**Autentifikatsiya:**
-1. Frontend `Telegram.WebApp.initData` ni `POST /api/app/auth/telegram` ga yuboradi.
-2. Backend imzoni bot tokeni bilan tekshiradi: HMAC-SHA256, `WebAppData` kaliti, `auth_date` ≤ `WEB_APP_AUTH_MAX_AGE`.
-3. Foydalanuvchi `telegramId` bo'yicha topiladi yoki yaratiladi (bazaga o'zgartirish kerak emas).
-4. Backend 12 soatlik token beradi. Token panel JWT'sidan **alohida kalit** bilan imzolanadi, shuning uchun biri ikkinchisining o'rnida ishlamaydi.
-5. `initDataUnsafe` faqat ism va rasmni ko'rsatish uchun ishlatiladi. Rol, til, telefon va ruxsatlar faqat backend javobidan olinadi.
-6. Har so'rovda foydalanuvchi bazadan qayta o'qiladi: cheklov (403) va maintenance (503) darhol kuchga kiradi.
-
-**Chek yuklash:** fayl bot orqali foydalanuvchining chatiga yuboriladi va Telegram `file_id` olinadi. Keyin botdagi bilan bir xil jarayon ishlaydi (`src/bot/receiptFlow.ts`): dublikat nazorati, urinishlar limiti, admin guruhiga kartochka.
-
-**API** (`/api/app`, `auth/telegram` dan boshqasi `Authorization: Bearer <token>` talab qiladi):
-
-| Metod | Yo'l | Ruxsat |
-|---|---|---|
-| POST | `/auth/telegram` `{ initData }` | ochiq (30/min) |
-| GET · PATCH | `/me` · `/me/settings` `{ language?, newsEnabled? }` | foydalanuvchi |
-| GET | `/products`, `/products/:code` · POST `/products/:code/video` | foydalanuvchi |
-| POST · GET | `/orders` `{ productCode }` · `/orders`, `/orders/:id` | o'z buyurtmalari |
-| POST | `/orders/:id/cancel`, `/orders/:id/receipt` (multipart `file`) | o'z buyurtmalari |
-| GET · POST | `/purchases` · `/purchases/:id/link` | foydalanuvchi |
-| GET | `/notifications` | foydalanuvchi |
-| GET | `/admin/stats` | `stats.view` |
-| GET | `/admin/receipts`, `/admin/receipts/:orderId/file` · POST `/admin/orders/:id/approve`, `/admin/orders/:id/reject` | `orders.review` |
-| GET · POST | `/admin/users` · `/admin/users/:id/ban`, `/admin/users/:id/unban` | `users.view` / `users.manage` |
-
-Xatolar `{ error, details: { code } }` shaklida qaytadi (masalan `phone_required`, `already_owned`, `bot_blocked`, `banned`, `maintenance`). Frontend kod bo'yicha tushunarli matn ko'rsatadi.
-
-**Lokal ishlab chiqish:**
-
-```bash
-npm run webapp:install
-npm run dev                  # backend + bot (8080)
-npm run webapp:dev           # http://localhost:5174/app/  (/api → 8080 ga proksi)
+```
+📚 Darsliklar → kurs → 🎥 tanishtiruv videosi (izohida tavsif va narx) → ✅ Darslikni olaman
+→ to'lov (karta) → chek → admin tasdiqlaydi → "To'lov muvaffaqiyatli" + 📚 Kursni boshlash → darslar
 ```
 
-Telegram'siz brauzerda ochish uchun dev `initData` yarating va uni `webapp/.env.local` ga yozing:
-
-```bash
-npm run webapp:initdata -- <telegram_id> [ism]   # → VITE_DEV_INIT_DATA=...
-```
-
-Bu faqat `vite dev` da ishlaydi, production build'ga kirmaydi. Haqiqiy Telegram'da sinash uchun HTTPS kerak: masalan `cloudflared tunnel --url http://localhost:5174` yoki `ngrok http 5174`, keyin `WEB_APP_URL=https://<tunnel>/app/`.
+- **Tanishtiruv videosi** (`products.video_file_id`) — ochiq: kursni sotib olmaganlar ham ko'radi. Panel → Mahsulotlar → video.
+- **Kurs darslari** (`lessons`) — faqat faol kirishi (`access_grants`) bor xaridorga yuboriladi. Sotib olmaganlar dars nomlarini 🔒 bilan ko'radi.
+- Sotib olingan kurs sahifasida: darslar ro'yxati va **🔗 Kanal havolasi** (yopiq kanal linkini qayta olish).
+- Sotuvdan olingan kurs xaridorlarning katalogida ✅ bilan qoladi.
 
 ## Kampaniya linklari (reklama deep link)
 
@@ -120,23 +73,20 @@ Admin panel → **Kampaniya linklari** (ADMIN va SUPER_ADMIN). Link uchun darsli
 - avtomatik qisqa kod, masalan `c7k2m9x`;
 - admin bergan kod, masalan `frontend-sep`.
 
-Bitta kod ikki joyda ishlaydi:
-
 | Havola | Natija |
 |---|---|
 | `t.me/<bot>` | Oddiy salomlashuv va barcha darsliklar |
-| `t.me/<bot>?start=c7k2m9x` | Bot "… darsligiga xush kelibsiz!" deydi va **faqat shu darslikni** ko'rsatadi. "📱 Ilovani ochish" tugmasi Mini App'ni shu darslik sahifasida ochadi |
-| `t.me/<bot>/<WEB_APP_SHORT_NAME>?startapp=c7k2m9x` | Mini App to'g'ridan-to'g'ri shu darslik sahifasida ochiladi |
+| `t.me/<bot>?start=c7k2m9x` | Bot "… darsligiga xush kelibsiz!" deydi va **faqat shu darslikni** ko'rsatadi |
 | Noto'g'ri, o'chirilgan link yoki nofaol darslik | "Bu havola noto'g'ri yoki eskirgan" va umumiy katalog |
 
-- **Kodni aniqlash:** kod faqat backend'da, bazadan aniqlanadi. Mini App `start_param` ni imzolangan initData ichida oladi, shuning uchun uni soxtalashtirib bo'lmaydi.
+- **Kodni aniqlash:** kod faqat backend'da, bazadan aniqlanadi.
 - **Eski format:** `4b_instagram` ko'rinishidagi linklar avvalgidek ishlaydi.
 - **Statistika:**
   - kirishlar: bir foydalanuvchining 30 daqiqa ichidagi takroriy bosishi bittaga hisoblanadi;
   - foydalanuvchilar va yangi foydalanuvchilar;
   - buyurtmalar va to'lovlar, tushum;
   - konversiya = to'lov qilganlar / link orqali kelgan foydalanuvchilar.
-- **Buyurtmani bog'lash:** buyurtma foydalanuvchi oxirgi marta bosgan linkka yoziladi, agar u 30 kun ichida bosilgan bo'lsa (`orders.link_id`). Bot'da ham, Mini App'da ham shunday.
+- **Buyurtmani bog'lash:** buyurtma foydalanuvchi oxirgi marta bosgan linkka yoziladi, agar u 30 kun ichida bosilgan bo'lsa (`orders.link_id`).
 - **O'chirish:** statistikasi bor link o'chirilmaydi, faqat faolsizlantiriladi.
 
 **Tracking link (bosishlar):** reklamaga `https://<PUBLIC_URL>/l/<kod>` qo'ying. U bosishni yozadi (IP saqlanmaydi, faqat kunlik hash) va `t.me/<bot>?start=<kod>` ga yo'naltiradi. Telegram `t.me` bosilganini botga bildirmaydi, shuning uchun "Link bosildi" bosqichi faqat shu link orqali ko'rinadi.
@@ -149,7 +99,7 @@ Bitta kod ikki joyda ishlaydi:
 
 Barcha sonlar unique foydalanuvchi bo'yicha (Telegram ID). Takroriy `/start` yangi foydalanuvchi hisoblanmaydi. Birinchi manba (first-touch) `users.first_link_id` va `first_source` da o'zgarmay saqlanadi, buyurtma esa oxirgi linkka yoziladi (last-touch, 30 kun).
 
-**Kurs ma'lumotlari:** davomiyligi, darslar soni, boshlanish sanasi, kimlar uchun, afzalliklari, dastur, o'qituvchi (Mahsulotlar → tahrirlash). To'ldirilgan bo'limlar uchun botda "📚 Kurs haqida / 💰 Narxi / 🎓 Dastur / 👨‍🏫 O'qituvchi" tugmalari chiqadi, Mini App esa ularni darslik sahifasida ko'rsatadi.
+**Kurs ma'lumotlari:** davomiyligi, darslar soni, boshlanish sanasi, kimlar uchun, afzalliklari, dastur, o'qituvchi (Mahsulotlar → tahrirlash). To'ldirilgan bo'limlar uchun botda "📚 Kurs haqida / 💰 Narxi / 🎓 Dastur / 👨‍🏫 O'qituvchi" tugmalari chiqadi.
 
 ## Rollar
 
@@ -157,7 +107,7 @@ Ruxsatlar bitta jadvalda saqlanadi (`src/services/permissions.ts`). Bot (`can(ct
 
 | Imkoniyat | USER | ADMIN | SUPER_ADMIN |
 |---|:-:|:-:|:-:|
-| Darsliklar, xaridlar, profil, sozlamalar, yordam | ✅ | ✅ | ✅ |
+| Darsliklar, kurs darslari, profil, sozlamalar, yordam | ✅ | ✅ | ✅ |
 | Dashboard/statistika, Telegram foydalanuvchilar, xabarlar, buyurtmalar | — | ✅ | ✅ |
 | Cheklarni tasdiqlash / rad etish (panel yoki Telegram), cheklar tarixi, buyurtmani bekor qilish | — | ✅ | ✅ |
 | Foydalanuvchini cheklash/tiklash, shaxsiy xabar | — | ✅ | ✅ |
@@ -241,8 +191,8 @@ npm run admin:dev             # http://localhost:5173  (/api → 8080 ga proksi)
 ### 6. Production build (bitta port)
 
 ```bash
-npm run build:all             # backend → dist/, panel → admin/dist/, Mini App → webapp/dist/
-npm start                     # panel (/), Mini App (/app/), API (/api) — http://localhost:8080
+npm run build:all             # backend → dist/, panel → admin/dist/
+npm start                     # panel (/), API (/api) — http://localhost:8080
 ```
 
 ---
@@ -257,7 +207,7 @@ npm start                     # panel (/), Mini App (/app/), API (/api) — http
    - Token frontendga hech qachon yuborilmaydi.
 3. Kanallar: botni har bir yopiq kanalga admin qiling («foydalanuvchilarni taklif qilish» va «a'zolarni chiqarish» huquqlari bilan).
    - **Kirish muddati:** mahsulotda «Kanalda qolish muddati (kun)» berilsa, har bir yangi xaridga muddat qo'yiladi; foydalanuvchi sahifasida muddatni uzaytirish, muddatsiz qilish, kanaldan chiqarish yoki tiklash mumkin. Bot har 5 daqiqada tekshiradi: muddat tugashidan 3 kun oldin eslatma yuboradi, tugaganda kanaldan chiqaradi. «A'zolarni chiqarish» huquqi bo'lmasa, chiqarish keyingi tekshiruvda qayta uriniladi.
-   - **Cheklash:** paneldagi «Cheklash» foydalanuvchini yopiq kanallardan ham chiqaradi (tanlov bilan); cheklov olib tashlansa, kirishlar tiklanadi va link «Mening xaridlarim» dan olinadi.
+   - **Cheklash:** paneldagi «Cheklash» foydalanuvchini yopiq kanallardan ham chiqaradi (tanlov bilan); cheklov olib tashlansa, kirishlar tiklanadi va link botdagi kurs sahifasidan («🔗 Kanal havolasi») olinadi.
 4. Admin guruhi: guruhga botni qo'shing va u yerda `/setgroup` yozing.
 
 ## Deploy (production)
@@ -314,7 +264,7 @@ Asosiy metrikalar:
 - `app_active_users_15m`, `app_broadcast_queue_pending`, `app_pending_receipts`;
 - standart jarayon metrikalari: CPU, RAM, event loop lag, GC.
 
-Har bir HTTP javobda `X-Request-Id` bor, loglar JSON (pino). Token, parol, initData, telefon va karta raqami loglarda `***` bilan niqoblanadi.
+Har bir HTTP javobda `X-Request-Id` bor, loglar JSON (pino). Token, parol, telefon va karta raqami loglarda `***` bilan niqoblanadi.
 
 **Graceful shutdown (SIGTERM/SIGINT):** quyidagi tartibda bajariladi. `SHUTDOWN_TIMEOUT_MS` dan oshsa, jarayon majburan chiqadi.
 1. `/ready` → 503.

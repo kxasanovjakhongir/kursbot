@@ -7,7 +7,6 @@ import { prisma } from "../src/db";
 import { createApp } from "../src/api/app";
 import { createBot } from "../src/bot/bot";
 import type { BotContext } from "../src/bot/context";
-import { signInitData } from "../src/lib/telegramAuth";
 import { resolveEntry } from "../src/services/campaignLinks";
 import { createPanelUser } from "../src/services/panelUsers";
 import { addCard } from "../src/services/cards";
@@ -79,13 +78,20 @@ function start(payload: string, from: { id: number; first_name: string }): Updat
   };
 }
 
-const initData = (id: number, startParam?: string) =>
-  signInitData(
-    { auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id, first_name: "Ali" }), ...(startParam ? { start_param: startParam } : {}) },
-    TOKEN,
-  );
+function callback(data: string, from: { id: number; first_name: string }): Update {
+  return {
+    update_id: updateId++,
+    callback_query: {
+      id: String(updateId),
+      from: { ...from, is_bot: false },
+      chat_instance: "ci",
+      data,
+      message: { message_id: 77, date: 0, chat: { id: from.id, type: "private", first_name: from.first_name }, from: BOT_INFO, text: "ekran" },
+    },
+  };
+}
 
-describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, Mini App, panel, statistika", () => {
+describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistika", () => {
   let bot: Bot<BotContext>;
   let app: Express;
   let admin: { Authorization: string };
@@ -151,8 +157,8 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, Mini App, panel,
     const all = texts().join("\n");
     expect(all).toContain("Frontend Development");
     expect(all).not.toContain("Backend");
-    // Mini App tugmasi aynan shu darslik sahifasini ochadi (bot → ilova kontekst)
-    expect(webAppUrls()).toContain("https://app.example.uz/app/product/fe");
+    // Mini App olib tashlangan — web_app tugmalari yo'q
+    expect(webAppUrls()).toEqual([]);
 
     const u = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(u).toMatchObject({ lastLinkId: link.id, lastSource: "instagram", firstSource: "instagram", lastProduct: "fe" });
@@ -197,23 +203,14 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, Mini App, panel,
     expect((await resolveEntry(disabled.body.code)).kind).toBe("product");
   });
 
-  it("CASE 3: Mini App startapp=<kod> — darslik aniqlanadi (imzolangan initData), kirish yoziladi", async () => {
-    const res = await request(app).post("/api/app/auth/telegram").send({ initData: initData(7010, link.code) });
-    expect(res.status).toBe(200);
-    expect(res.body.entry).toEqual({ status: "ok", productCode: "fe" });
-    expect(res.body.me.featured).toEqual({ code: "fe", title: "Frontend Development" });
-    expect(await prisma.linkVisit.count({ where: { linkId: link.id, via: "webapp", isNewUser: true } })).toBe(1);
-
-    expect((await request(app).post("/api/app/auth/telegram").send({ initData: initData(7011) })).body.entry).toBeNull();
-    expect((await request(app).post("/api/app/auth/telegram").send({ initData: initData(7012, "yoq-kod") })).body.entry).toEqual({ status: "unavailable" });
+  it("CASE 3: yangi foydalanuvchi link orqali keladi — yangi kirish sifatida yoziladi", async () => {
+    await bot.handleUpdate(start(link.code, { id: 7010, first_name: "Ali" }));
+    expect(await prisma.linkVisit.count({ where: { linkId: link.id, via: "bot", isNewUser: true } })).toBe(1);
   });
 
-  it("CASE 8 + 9: bot linki → Mini App'da buyurtma — kontekst saqlanadi, buyurtma linkka bog'lanadi, statistika", async () => {
-    // Vali (7002) bot orqali link bilan kirgan; endi Mini App'ni menyu tugmasi bilan (start_param siz) ochadi
-    const login = await request(app).post("/api/app/auth/telegram").send({ initData: initData(7002) });
-    expect(login.body.me.featured).toEqual({ code: "fe", title: "Frontend Development" });
-    const order = await request(app).post("/api/app/orders").set("Authorization", `Bearer ${login.body.token}`).send({ productCode: "fe" });
-    expect(order.status).toBe(201);
+  it("CASE 8 + 9: bot linki → botda buyurtma — kontekst saqlanadi, buyurtma linkka bog'lanadi, statistika", async () => {
+    // Vali (7002) bot orqali link bilan kirgan, endi «Darslikni olaman» ni bosadi
+    await bot.handleUpdate(callback("buy:fe", { id: 7002, first_name: "Vali" }));
     const saved = await prisma.order.findFirstOrThrow({ where: { user: { telegramId: 7002n } } });
     expect(saved.linkId).toBe(link.id);
 
@@ -223,9 +220,9 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, Mini App, panel,
     expect(row.stats).toMatchObject({ visits: 2, users: 2, newUsers: 1, orders: 1, paid: 1, revenue: 900_000, conversion: 50 });
 
     // Link orqali kelmagan foydalanuvchining buyurtmasi linkka yozilmaydi
-    await prisma.user.update({ where: { telegramId: 7011n }, data: { phone: "+998901110000" } });
-    const plain = await request(app).post("/api/app/auth/telegram").send({ initData: initData(7011) });
-    await request(app).post("/api/app/orders").set("Authorization", `Bearer ${plain.body.token}`).send({ productCode: "be" });
+    await prisma.user.create({ data: { telegramId: 7011n, firstName: "Plain", phone: "+998901110000" } });
+    await bot.handleUpdate(start("", { id: 7011, first_name: "Plain" }));
+    await bot.handleUpdate(callback("buy:be", { id: 7011, first_name: "Plain" }));
     expect((await prisma.order.findFirstOrThrow({ where: { user: { telegramId: 7011n } } })).linkId).toBeNull();
   });
 

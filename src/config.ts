@@ -73,29 +73,13 @@ const schema = z.object({
   // Frontend manzili (CORS). Vergul bilan bir nechta
   CLIENT_URL: z.string().default("http://localhost:5173"),
 
-  // --- Telegram Mini App ---
-  // Mini App manzili (Telegram faqat HTTPS ni qabul qiladi). Bo'sh bo'lsa botda "Ilovani ochish" tugmasi chiqmaydi
-  WEB_APP_URL: z
-    .string()
-    .url()
-    .refine((u) => u.startsWith("https://"), "https:// bilan boshlanishi kerak (Telegram talabi)")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  // Serverning ochiq manzili (tracking link: https://domen.uz/l/<kod>). Berilmasa WEB_APP_URL domeni ishlatiladi
+  // Serverning ochiq manzili (tracking link: https://domen.uz/l/<kod>). Berilmasa tracking link yaratilmaydi
   PUBLIC_URL: z
     .string()
     .url()
     .refine((u) => u.startsWith("https://"), "https:// bilan boshlanishi kerak")
     .optional()
     .or(z.literal("").transform(() => undefined)),
-  // BotFather'da Mini App uchun berilgan qisqa nom (t.me/<bot>/<nom>?startapp=kod havolalari uchun). Ixtiyoriy
-  WEB_APP_SHORT_NAME: z
-    .string()
-    .regex(/^[A-Za-z0-9_]{3,30}$/, "3–30 ta lotin harfi, raqam yoki _")
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  // initData qancha vaqt amal qiladi (soniya). Telegram har ochilishda yangisini beradi
-  WEB_APP_AUTH_MAX_AGE: z.coerce.number().int().positive().default(86400),
 
   // --- Kurs darslari ---
   // true — dars videolarini forward qilish va saqlab olish taqiqlanadi (Telegram protect_content).

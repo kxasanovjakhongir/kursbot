@@ -26,7 +26,6 @@ import { productsRouter } from "./routes/products";
 import { cardsRouter } from "./routes/cards";
 import { linksRouter } from "./routes/links";
 import { analyticsRouter } from "./routes/analytics";
-import { webAppRouter } from "./webapp/router";
 import { errorsRouter } from "./routes/errors";
 import { lessonsRouter } from "./routes/lessons";
 
@@ -47,29 +46,6 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   // Telegram update lari kichik (odatda < 10 KB); 1 MB — katta zaxira, lekin xotirani to'ldirib bo'lmaydi
   if (webhook) app.post(webhook.path, express.json({ limit: "1mb" }), webhook.handler);
 
-  // Telegram Mini App (webapp/dist) — /app/ ostida. Telegram Web uni iframe da ochadi, shuning uchun
-  // frame-ancestors Telegram domenlariga ochiq, SDK esa telegram.org dan yuklanadi
-  const webappDist = path.resolve(__dirname, "../../webapp/dist");
-  if (existsSync(webappDist)) {
-    const webappHeaders = helmet({
-      frameguard: false,
-      contentSecurityPolicy: {
-        directives: {
-          "script-src": ["'self'", "https://telegram.org"],
-          "img-src": ["'self'", "data:", "blob:", "https://t.me", "https://*.t.me", "https://*.telegram.org"],
-          "frame-ancestors": ["'self'", "https://web.telegram.org", "https://*.telegram.org"],
-          "connect-src": ["'self'"],
-        },
-      },
-    });
-    app.use("/app", webappHeaders, express.static(webappDist, { index: false, maxAge: "1h" }));
-    // SPA: istalgan /app/... yo'li index.html (u keshlanmaydi — yangi versiya darhol ko'rinadi)
-    app.get(/^\/app(\/.*)?$/, webappHeaders, (_req, res) => {
-      res.setHeader("Cache-Control", "no-cache");
-      res.sendFile(path.join(webappDist, "index.html"));
-    });
-  }
-
   app.use(
     helmet({
       contentSecurityPolicy: {
@@ -87,29 +63,26 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   const api = express.Router();
   api.use(
     cors({
-      // Admin panel va (alohida hostingda bo'lsa) Mini App manzillari
-      origin: [...config.CLIENT_URL.split(",").map((s) => s.trim()), ...(config.WEB_APP_URL ? [new URL(config.WEB_APP_URL).origin] : [])],
+      // Admin panel manzil(lar)i
+      origin: config.CLIENT_URL.split(",").map((s) => s.trim()),
       credentials: false,
       // Export fayl nomi (panel alohida domenda bo'lsa ham brauzer o'qiy olishi uchun)
       exposedHeaders: ["Content-Disposition", "X-Export-Total"],
     }),
   );
   api.use(express.json({ limit: "1mb" }));
-  // Panel API: IP bo'yicha. Mini App (/app) o'z limitlariga ega (foydalanuvchi ID bo'yicha)
+  // Panel API: IP bo'yicha
   api.use(
     rateLimit({
       windowMs: 60_000,
       limit: 300,
       standardHeaders: "draft-7",
       legacyHeaders: false,
-      skip: (req) => req.path.startsWith("/app/"),
       message: { error: "Juda ko'p so'rov. Birozdan keyin qayta urinib ko'ring.", details: { code: "rate_limited" } },
     }),
   );
 
   api.use("/auth", authRouter);
-  // Telegram Mini App (o'z autentifikatsiyasi bilan — initData)
-  api.use("/app", webAppRouter(runtime));
 
   // Quyidagilarning barchasi JWT talab qiladi
   // Har bir bo'lim o'z ruxsati bilan (rollar jadvali: services/permissions.ts)
@@ -141,7 +114,7 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   const dist = path.resolve(__dirname, "../../admin/dist");
   if (existsSync(dist)) {
     app.use(express.static(dist, { index: false, maxAge: "1h" }));
-    app.get(/^(?!\/api\/|\/app(\/|$)).*/, (_req, res) => res.sendFile(path.join(dist, "index.html")));
+    app.get(/^(?!\/api\/).*/, (_req, res) => res.sendFile(path.join(dist, "index.html")));
   }
 
   app.use(notFound);

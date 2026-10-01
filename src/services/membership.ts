@@ -83,7 +83,7 @@ export async function revokeGrantById(api: Api, grantId: bigint, reason: GrantRe
 
 /**
  * Kirish muddatini o'rnatadi (null — muddatsiz). Bekor qilingan kirish bo'lsa — tiklanadi:
- * foydalanuvchi yangi linkni "Mening xaridlarim" dan oladi.
+ * foydalanuvchi yangi linkni kurs sahifasidagi «🔗 Kanal havolasi» dan oladi.
  */
 export async function setGrantExpiry(api: Api, grantId: bigint, expiresAt: Date | null): Promise<GrantFull | null> {
   const grant = await loadGrant(grantId);

@@ -331,14 +331,13 @@ export interface CampaignLink {
   product: { id: number; code: string; title: string; isActive: boolean };
   createdBy: { name: string } | null;
   /** tracked — bosishlarni ham sanaydigan redirect (reklama uchun tavsiya) */
-  urls: { bot: string | null; tracked: string | null; app: string | null };
+  urls: { bot: string | null; tracked: string | null };
   stats: LinkStats | null;
 }
 
 export interface LinksMeta {
   products: { id: number; code: string; title: string; isActive: boolean }[];
   botUsername: string | null;
-  appLinks: boolean;
 }
 
 // ---------- Marketing analitikasi ----------

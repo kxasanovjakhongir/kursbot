@@ -6,7 +6,7 @@ import type { Express } from "express";
 import { prisma } from "../src/db";
 import { createApp } from "../src/api/app";
 import { createPanelUser } from "../src/services/panelUsers";
-import { signAppToken } from "../src/api/webapp/session";
+import jwt from "jsonwebtoken";
 import { can } from "../src/services/permissions";
 import { prepareUserExport } from "../src/services/export";
 import { userExportSource } from "../src/services/export/rows";
@@ -89,15 +89,14 @@ describe.skipIf(!enabled)("foydalanuvchilar eksporti va darslar API", () => {
     expect(body.subarray(-6).toString()).toContain("%%EOF");
   });
 
-  it("TEST 10: tokensiz, Mini App (oddiy foydalanuvchi) tokeni bilan — 401; noma'lum format — 400", async () => {
+  it("TEST 10: tokensiz yoki soxta (boshqa kalit bilan imzolangan) token bilan — 401; noma'lum format — 400", async () => {
     expect((await request(app).get("/api/telegram-users/export/xlsx")).status).toBe(401);
     const user = await prisma.user.findFirstOrThrow();
-    const appToken = signAppToken(user);
-    expect((await request(app).get("/api/telegram-users/export/xlsx").set("Authorization", `Bearer ${appToken}`)).status).toBe(401);
-    expect((await request(app).get("/api/lessons").set("Authorization", `Bearer ${appToken}`)).status).toBe(401);
+    // Oddiy foydalanuvchi nomidan soxta token (panel kalitini bilmaydi)
+    const forged = jwt.sign({ sub: user.id.toString(), pv: "x" }, "boshqa-kalit-boshqa-kalit-boshqa-kalit", { algorithm: "HS256" });
+    expect((await request(app).get("/api/telegram-users/export/xlsx").set("Authorization", `Bearer ${forged}`)).status).toBe(401);
+    expect((await request(app).get("/api/lessons").set("Authorization", `Bearer ${forged}`)).status).toBe(401);
     expect((await get("/api/telegram-users/export/csv")).status).toBe(400);
-    // Mini App API da export yo'q
-    expect((await request(app).get("/api/app/telegram-users/export/xlsx").set("Authorization", `Bearer ${appToken}`)).status).toBe(404);
   });
 
   it("filtrlar: export ro'yxat bilan aynan bir xil natija beradi", async () => {

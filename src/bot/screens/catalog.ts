@@ -1,7 +1,7 @@
 import { InlineKeyboard } from "grammy";
 import type { Order, Product } from "@prisma/client";
 import type { BotContext } from "../context";
-import { webAppUrl, withAskButton, withNav, withPagination, withWebAppButton } from "../keyboards";
+import { withAskButton, withNav, withPagination } from "../keyboards";
 import { escapeHtml, formatDate, formatDateTime, formatMoney, formatSum, groupCard } from "../../lib/format";
 import { prisma } from "../../db";
 import { listActiveProducts, ownedInactiveProducts, ownedProductIds } from "../../services/products";
@@ -29,7 +29,7 @@ export async function catalogScreen(ctx: BotContext, page = 1): Promise<Screen> 
     return { text: await ctx.t("no_products"), keyboard: withNav(new InlineKeyboard(), ctx.lang) };
   }
   const p = paginate(products, page, PAGE_SIZE);
-  const kb = withWebAppButton(new InlineKeyboard(), ctx.lang);
+  const kb = new InlineKeyboard();
   for (const product of p.items) {
     const price = product.price > 0 ? ` — ${formatSum(product.price)}` : "";
     kb.text(`${owned.has(product.id) ? "✅ " : ""}${product.title}${price}`, CB.product(product.code)).row();
@@ -63,9 +63,6 @@ export async function productScreen(ctx: BotContext, product: Product): Promise<
   const lessons = (await lessonCounts([product.id])).get(product.id) ?? 0;
   if (lessons > 0) kb.text(ctx.label("btn_lessons", { soni: lessons }), CB.lessons(product.code)).row();
   withAskButton(kb.text(ctx.label("btn_buy"), CB.buy(product.code)), ctx.lang);
-  // Mini App aynan shu darslik sahifasida ochiladi (bot → ilova o'tishida kontekst saqlanadi)
-  const appPath = `product/${encodeURIComponent(product.code)}`;
-  if (webAppUrl(appPath)) withWebAppButton(kb.row(), ctx.lang, appPath);
   return { text, keyboard: withNav(kb, ctx.lang, CB.catalog()) };
 }
 
@@ -111,7 +108,7 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   if (order.status === "receipt_sent") {
     return {
       text: await ctx.t("payment_under_review", { raqam: order.id.toString() }),
-      keyboard: withNav(new InlineKeyboard(), ctx.lang, CB.purchases()),
+      keyboard: withNav(new InlineKeyboard(), ctx.lang, CB.product(order.product.code)),
     };
   }
   const card = order.cardId ? await prisma.card.findUnique({ where: { id: order.cardId } }) : null;
@@ -131,7 +128,7 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   if (card) kb.copyText(ctx.label("btn_copy_card"), card.number).row();
   if (order.status === "new") kb.text(ctx.label("btn_cancel_order"), CB.cancelOrder(order.id)).row();
   withAskButton(kb, ctx.lang);
-  return { text, keyboard: withNav(kb, ctx.lang, CB.purchases()) };
+  return { text, keyboard: withNav(kb, ctx.lang, CB.product(order.product.code)) };
 }
 
 /** ❓ Buyurtmani bekor qilishni tasdiqlash */

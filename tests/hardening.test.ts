@@ -1,5 +1,4 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import request from "supertest";
 import { GrammyError, type Api, type Bot } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 import { prisma } from "../src/db";
@@ -8,13 +7,10 @@ import type { BotContext } from "../src/bot/context";
 import { CAPTION_LIMIT, fitCaption } from "../src/bot/admin/receiptCard";
 import { fitBlocks } from "../src/bot/admin/summaries";
 import { approveAndNotify } from "../src/bot/admin/reviewActions";
-import { createApp } from "../src/api/app";
-import { signInitData } from "../src/lib/telegramAuth";
 import { stripHtml } from "../src/lib/format";
 import { parseLogLine } from "../src/lib/errorSink";
 import { processExpiredGrants } from "../src/services/membership";
 import { courseStats } from "../src/services/analytics";
-import { addCard } from "../src/services/cards";
 import { invalidateSettings, setSetting } from "../src/services/settings";
 import { invalidateTexts } from "../src/i18n";
 
@@ -310,76 +306,6 @@ describe.skipIf(!enabled)("muddati o'tgan kirishlar: bitta 'buzuq' kanal boshqal
     const res = await processExpiredGrants(api);
     expect(res).toEqual({ removed: 1, pending: 150 });
     expect((await prisma.accessGrant.findUniqueOrThrow({ where: { id: goodGrant.id } })).revokedAt).not.toBeNull();
-  });
-});
-
-// ---------- Mini App: chek rasmi zaxira yo'li va uzun video izohi ----------
-
-describe.skipIf(!enabled)("Mini App: Telegram cheklovlari", () => {
-  const TOKEN = "777:hardening-token";
-  const PNG = Buffer.from("89504e470d0a1a0a0000000d494844520000000100000001", "hex");
-  const methods: { method: string; caption?: string }[] = [];
-  let photoFails = false;
-  const api = {
-    token: TOKEN,
-    getMe: async () => ({ id: 42, is_bot: true, first_name: "Test", username: "test_bot" }),
-    sendMessage: async (chatId: number) => {
-      methods.push({ method: "sendMessage" });
-      return { message_id: 1, chat: { id: chatId } };
-    },
-    sendPhoto: async (chatId: number) => {
-      methods.push({ method: "sendPhoto" });
-      if (photoFails) throw tgError("sendPhoto", 400, "Bad Request: PHOTO_INVALID_DIMENSIONS");
-      return { message_id: 2, chat: { id: chatId }, photo: [{ file_id: "ph", file_unique_id: "uph", width: 1, height: 1 }] };
-    },
-    sendDocument: async (chatId: number) => {
-      methods.push({ method: "sendDocument" });
-      return { message_id: 3, chat: { id: chatId }, document: { file_id: "doc", file_unique_id: "udoc" } };
-    },
-    sendVideo: async (_chatId: number, _video: string, opts?: { caption?: string }) => {
-      methods.push({ method: "sendVideo", caption: opts?.caption });
-      return { message_id: 4 };
-    },
-    editMessageCaption: async () => true,
-    editMessageText: async () => true,
-  } as unknown as Api;
-  afterAll(() => prisma.$disconnect());
-
-  async function login(app: ReturnType<typeof createApp>) {
-    const initData = signInitData({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: 8801, first_name: "Aziz" }) }, TOKEN);
-    const res = await request(app).post("/api/app/auth/telegram").send({ initData });
-    return { Authorization: `Bearer ${res.body.token}` };
-  }
-
-  it("Telegram rasmni qabul qilmasa — chek hujjat sifatida saqlanadi (yo'qolmaydi)", async () => {
-    await prisma.$executeRawUnsafe(`TRUNCATE notifications, events, receipts, access_grants, orders, cards, products, settings, users RESTART IDENTITY CASCADE`);
-    invalidateSettings();
-    await addCard("8600123412341234", "A. Karimov");
-    const product = await prisma.product.create({ data: { code: "rc", title: "Kurs", price: 1000, isActive: true, channelId: -1001n } });
-    const app = createApp({ runtime: { api, mode: "polling", tokenSource: "env", isRunning: () => true } });
-    const h = await login(app);
-    const user = await prisma.user.findUniqueOrThrow({ where: { telegramId: 8801n } });
-    const order = await prisma.order.create({ data: { userId: user.id, productId: product.id, amount: 1000, expiresAt: new Date(Date.now() + 3600_000) } });
-
-    photoFails = true;
-    methods.length = 0;
-    const res = await request(app).post(`/api/app/orders/${order.id}/receipt`).set(h).attach("file", PNG, { filename: "uzun-chek.png", contentType: "image/png" });
-    expect(res.status).toBe(201);
-    expect(methods.map((m) => m.method).slice(0, 2)).toEqual(["sendPhoto", "sendDocument"]);
-    const receipt = await prisma.receipt.findFirstOrThrow({ where: { orderId: order.id } });
-    expect(receipt).toMatchObject({ fileType: "image", fileId: "doc" });
-    photoFails = false;
-  });
-
-  it("uzun tavsifli kurs videosi Mini App'dan: video izohsiz, matn alohida xabar", async () => {
-    await prisma.product.create({ data: { code: "vv", title: "V".repeat(100), price: 1000, isActive: true, videoFileId: "vid", description: "d".repeat(930) } });
-    const app = createApp({ runtime: { api, mode: "polling", tokenSource: "env", isRunning: () => true } });
-    const h = await login(app);
-    methods.length = 0;
-    const res = await request(app).post("/api/app/products/vv/video").set(h);
-    expect(res.status).toBe(200);
-    expect(methods[0]).toEqual({ method: "sendVideo", caption: undefined });
-    expect(methods[1].method).toBe("sendMessage");
   });
 });
 

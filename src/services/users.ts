@@ -174,7 +174,7 @@ export interface UserSearch {
 
 export type UserFilter = Omit<UserSearch, "page" | "pageSize">;
 
-/** Ro'yxat (admin panel, Mini App) va export uchun yagona filtr */
+/** Ro'yxat (admin panel) va export uchun yagona filtr */
 export async function buildUserWhere({ q, status, productId, source, campaign, purchased, registered, from, to, boughtProductId, paymentStatus }: UserFilter): Promise<Prisma.UserWhereInput> {
   const where: Prisma.UserWhereInput = { isBot: false };
   const and: Prisma.UserWhereInput[] = [];
@@ -211,7 +211,7 @@ export async function buildUserWhere({ q, status, productId, source, campaign, p
   return where;
 }
 
-/** Foydalanuvchilarni qidirish (admin panel va Mini App admin bo'limi): ID, username, ism, telefon bo'yicha */
+/** Foydalanuvchilarni qidirish (admin panel): ID, username, ism, telefon bo'yicha */
 export async function searchUsers({ page, pageSize, ...filter }: UserSearch) {
   const where = await buildUserWhere(filter);
   const [items, total] = await Promise.all([

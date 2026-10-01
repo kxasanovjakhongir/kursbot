@@ -169,7 +169,7 @@ export function telegramUsersRouter(rt: BotRuntime): Router {
   r.post("/:id/unban", async (req, res) => {
     assertPermission(req, "users.manage");
     const user = await findUser(parseBigId(req.params.id));
-    // Cheklov sababli yopilgan kanal kirishlari tiklanadi — link "Mening xaridlarim" dan olinadi
+    // Cheklov sababli yopilgan kanal kirishlari tiklanadi — link kurs sahifasidagi «🔗 Kanal havolasi» dan olinadi
     const { user: updated, restored } = await unbanUser(user.id);
     await logActivity(
       currentUser(req).id,

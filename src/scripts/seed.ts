@@ -21,7 +21,6 @@ async function main() {
   // Telegram "Menu" tugmasi (admin paneldan boshqariladi)
   const menu = [
     { name: "START", command: "start", description: "Boshlash", order: 1 },
-    { name: "XARIDLAR", command: "purchases", description: "Mening xaridlarim", order: 2 },
     { name: "HELP", command: "help", description: "Yordam", order: 3 },
     { name: "CONTACT", command: "contact", description: "Bog'lanish", order: 4 },
     { name: "PROFIL", command: "profile", description: "Profil", order: 5 },
@@ -35,7 +34,7 @@ async function main() {
       command: "help",
       description: "Yordam",
       response:
-        "Sizga yordam berish uchun:\n• /start — darsliklar ro'yxati\n• /purchases — mening xaridlarim\n• /profile — profil\n• /settings — til va sozlamalar\n• /contact — admin bilan bog'lanish",
+        "Sizga yordam berish uchun:\n• /start — darsliklar ro'yxati\n• /profile — profil\n• /settings — til va sozlamalar\n• /contact — admin bilan bog'lanish",
     },
     { command: "about", description: "Biz haqimizda", response: "Biz darsliklarni Telegram yopiq kanallari orqali taqdim etamiz." },
     { command: "contact", description: "Bog'lanish", response: "Savollar bo'yicha adminga yozing." },

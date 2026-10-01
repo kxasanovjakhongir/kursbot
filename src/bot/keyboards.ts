@@ -7,8 +7,8 @@ import { CB } from "./ui/callbacks";
 
 /**
  * Doimiy pastki menyu (reply keyboard): "Darsliklar" va "Yordam". "Admin panel" faqat adminlarga.
- * Xaridlar, profil va sozlamalar menyuda yo'q — kurs ichidan (kanal havolasi, darslar) va
- * /purchases, /profile, /settings buyruqlari orqali ochiladi.
+ * Sotib olingan kurs (darslar, kanal havolasi) «Darsliklar» ichida ochiladi. Profil va sozlamalar —
+ * /profile, /settings buyruqlari orqali.
  */
 export function mainMenu(lang: Lang, role: Role = "user"): Keyboard {
   const kb = new Keyboard().text(label(lang, "menu_products")).text(label(lang, "menu_help"));
@@ -63,20 +63,6 @@ export function withPagination(kb: InlineKeyboard, page: number, pages: number, 
   kb.text(`${page} / ${pages}`, CB.noop);
   kb.text(page < pages ? "▶️" : " ", page < pages ? cb(page + 1) : CB.noop);
   return kb;
-}
-
-/** "📱 Ilovani ochish" — Mini App (WEB_APP_URL berilgan bo'lsa). Inline web_app tugmasi initData ni imzolangan holda beradi */
-/** Mini App sahifasi manzili: WEB_APP_URL + yo'l (masalan "product/4b") — ilova shu sahifada ochiladi */
-export function webAppUrl(path = ""): string | null {
-  if (!config.WEB_APP_URL) return null;
-  const base = config.WEB_APP_URL.endsWith("/") ? config.WEB_APP_URL : `${config.WEB_APP_URL}/`;
-  return new URL(path, base).toString();
-}
-
-export function withWebAppButton(kb: InlineKeyboard, lang: Lang, path = ""): InlineKeyboard {
-  const url = webAppUrl(path);
-  if (!url) return kb;
-  return kb.webApp(label(lang, "btn_open_app"), url).row();
 }
 
 export function reviewKeyboard(orderId: bigint): InlineKeyboard {

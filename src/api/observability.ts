@@ -41,7 +41,6 @@ export const requestObserver: RequestHandler = (req, res, next) => {
       status: res.statusCode,
       ms: Math.round(seconds * 1000),
       panelUserId: req.panelUser?.id,
-      appUserId: req.appSession?.user.id,
     };
     if (res.statusCode >= 500) logger.error(entry, "http");
     else if (res.statusCode >= 400 || seconds > 2) logger.warn(entry, "http");

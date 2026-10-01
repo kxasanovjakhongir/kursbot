@@ -13,7 +13,7 @@ export type SubmitReceiptResult =
   | { kind: "max_attempts" };
 
 /**
- * Chekni buyurtmaga biriktiradi (TZ 5.5, BR-04). Bot (chatga yuborilgan rasm) ham, Mini App (yuklangan fayl) ham shuni chaqiradi.
+ * Chekni buyurtmaga biriktiradi (TZ 5.5, BR-04). Bot (chatga yuborilgan rasm yoki PDF) shuni chaqiradi.
  * Adminlarga yuborish alohida — mijozga javob kechikmasligi uchun `forwardReceiptToAdmins` keyin chaqiriladi.
  */
 export async function submitReceipt(userId: bigint, orderId: bigint, file: IncomingReceipt): Promise<SubmitReceiptResult> {

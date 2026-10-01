@@ -133,7 +133,7 @@ model User {
   // Oxirgi START dagi mahsulot va manba — oqim davomida ishlatiladi
   lastProduct  String?   @map("last_product")
   lastSource   String?   @map("last_source")
-  // Oxirgi kampaniya linki (bot → Mini App → buyurtma yo'lida kontekst saqlanadi)
+  // Oxirgi kampaniya linki (bot → buyurtma yo'lida kontekst saqlanadi)
   lastLinkId   Int?      @map("last_link_id")
   // Birinchi kampaniya linki (first-touch) — keyingi linklar uni o'zgartirmaydi
   firstLinkId  Int?      @map("first_link_id")
@@ -186,7 +186,7 @@ model Product {
   filesMode      FilesMode   @default(auto) @map("files_mode")
   fileMessageIds BigInt[]    @default([]) @map("file_message_ids")
   accessDays     Int?        @map("access_days")
-  // Kurs ma'lumotlari (ixtiyoriy) — botda bo'lim tugmalari va Mini App'da ko'rsatiladi
+  // Kurs ma'lumotlari (ixtiyoriy) — botda bo'lim tugmalari sifatida ko'rsatiladi
   duration       String?
   lessonsCount   Int?        @map("lessons_count")
   audience       String?
@@ -606,7 +606,7 @@ model BotState {
   @@map("bot_state")
 }
 
-// Marketing: kampaniya (deep link) — t.me/bot?start=<code> va Mini App ?startapp=<code>.
+// Marketing: kampaniya (deep link) — t.me/bot?start=<code>.
 // Kod qaysi mahsulotga olib borishini baza belgilaydi (frontend/bot da hardcode yo'q)
 model CampaignLink {
   id          Int      @id @default(autoincrement())
@@ -636,6 +636,7 @@ model CampaignLink {
 
 enum LinkVisitVia {
   bot
+  // Olib tashlangan Mini App orqali kirishlar — faqat tarixiy yozuvlar uchun (yangilari yozilmaydi)
   webapp
 }
 

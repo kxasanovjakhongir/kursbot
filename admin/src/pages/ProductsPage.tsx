@@ -263,7 +263,7 @@ export default function ProductsPage() {
           items.length === 0 ? (
             <EmptyState
               title="Hozircha mahsulot yo'q"
-              hint="Birinchi darslikni qo'shing — u botda va Mini App'da ko'rinadi"
+              hint="Birinchi darslikni qo'shing — u botda ko'rinadi"
               action={<Button onClick={() => openForm(EMPTY_FORM)}>Yangi mahsulot</Button>}
             />
           ) : (
@@ -505,7 +505,7 @@ export default function ProductsPage() {
         message={
           <div className="space-y-2">
             <p>
-              «{removing?.title ?? ""}» o'chiriladi: bot, Mini App va paneldan yo'qoladi, kampaniya linklari o'chiriladi.
+              «{removing?.title ?? ""}» o'chiriladi: bot va paneldan yo'qoladi, kampaniya linklari o'chiriladi.
             </p>
             <p className="text-gray-500">
               Buyurtmalar va tushum tarixi saqlanadi, sotib olganlarning kanalga kirishi ham saqlanadi. To'lanmagan ochiq buyurtmalar bekor qilinadi.

@@ -5,9 +5,8 @@ import { contactAdminKeyboard, mainMenu, phoneKeyboard } from "../keyboards";
 import { cancelOrderConfirmScreen, catalogScreen, courseSectionScreen, orderCancelledScreen, paymentScreen, productScreen, type OrderWithProduct } from "../screens/catalog";
 import { profileScreen } from "../screens/account";
 import { lockedLessonsScreen, ownedCourseScreen } from "../screens/lessons";
-import { purchasesScreen } from "../screens/purchases";
 import { CB, COURSE_SECTIONS, ID_RE, PAGE_RE } from "../ui/callbacks";
-import { render, renderLoading, renderNew } from "../ui/render";
+import { render, renderNew } from "../ui/render";
 import { allLabels } from "../../i18n";
 import { parseStartPayload } from "../../lib/deeplink";
 import { normalizePhone } from "../../lib/phone";
@@ -278,15 +277,7 @@ pm.callbackQuery(new RegExp(`^ord:cancel_ok:${ID_RE}$`), async (ctx) => {
   await render(ctx, await orderCancelledScreen(ctx, orderId));
 });
 
-// ---------- 5.8. Mening xaridlarim ----------
-const showPurchases = (page: number) => async (ctx: BotContext) => renderLoading(ctx, () => purchasesScreen(ctx, page));
-
-pm.hears(allLabels("menu_purchases"), showPurchases(1));
-pm.command("purchases", showPurchases(1));
-// Eski xabarlardagi tugma
-pm.callbackQuery("purchases", showPurchases(1));
-pm.callbackQuery(new RegExp(`^nav:pur:${PAGE_RE}$`), (ctx) => showPurchases(Number(ctx.match[1]))(ctx));
-
+// ---------- Kanal havolasini qayta olish (kurs sahifasidagi «🔗 Kanal havolasi») ----------
 pm.callbackQuery(new RegExp(`^link:${ID_RE}$`), async (ctx) => {
   // Telegram API chaqiruvi vaqt oladi — darhol "tayyorlanmoqda" deb javob beramiz
   await ctx.answerCallbackQuery({ text: await ctx.t("link_loading") });

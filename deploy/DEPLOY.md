@@ -1,6 +1,6 @@
 # Production deploy (Ubuntu 24.04 LTS, bitta server)
 
-Arxitektura: **Telegram → Nginx (TLS) → app konteyneri (bot webhook + API + panel + Mini App) → PostgreSQL konteyneri**.
+Arxitektura: **Telegram → Nginx (TLS) → app konteyneri (bot webhook + API + panel) → PostgreSQL konteyneri**.
 Redis/queue yo'q (kerak emas — navbat, qulf va umumiy holat PostgreSQL da; yuklama testi: 1000+ update/s).
 
 Minimal server: **2 vCPU, 2–4 GB RAM, 40 GB SSD**. Domen A-yozuvi server IP siga yo'naltirilgan bo'lsin.

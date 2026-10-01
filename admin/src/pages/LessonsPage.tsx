@@ -87,7 +87,7 @@ export default function LessonsPage() {
           <div>
             <div className="font-medium text-gray-900">Video qanday qo'shiladi?</div>
             Botda videoni yuboring yoki Telegram kanal/chatdagi videoni botga <b>forward</b> qiling → kursni tanlang → dars nomini yozing. Bot
-            menyusida: <b>🛠 Admin panel → 🎥 Darslar</b>. Video serverga yuklab olinmaydi va ilovada hajm cheklovi yo'q (Telegram qabul qilgan video
+            menyusida: <b>🛠 Admin panel → 🎥 Darslar</b>. Video serverga yuklab olinmaydi va botda hajm cheklovi yo'q (Telegram qabul qilgan video
             — 2 GB gacha, Premium hisobdan 4 GB gacha).
           </div>
         </div>

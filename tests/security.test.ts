@@ -145,7 +145,7 @@ describe.skipIf(!enabled)("xavfsizlik testlari", () => {
     await bot.handleUpdate({ update_id: updateId++, message: { message_id: 1, date: 0, chat, text: "egasiz" } } as unknown as Update);
   });
 
-  it("start/startapp parametri: injeksiya, juda uzun, maxsus belgilar — xavfsiz rad etiladi", async () => {
+  it("start parametri: injeksiya, juda uzun, maxsus belgilar — xavfsiz rad etiladi", async () => {
     for (const p of ["' OR 1=1 --", "a".repeat(500), "../../.env", "c<script>", "course_1;DROP TABLE users"]) {
       expect((await resolveEntry(p)).kind).toBe("unavailable");
     }

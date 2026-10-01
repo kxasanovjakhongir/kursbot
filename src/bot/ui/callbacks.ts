@@ -12,7 +12,6 @@ export const CB = {
   noop: "noop",
   home: "nav:home",
   catalog: (page = 1) => `nav:cat:${page}`,
-  purchases: (page = 1) => `nav:pur:${page}`,
   profile: "nav:profile",
   settings: "nav:settings",
   language: "nav:lang",

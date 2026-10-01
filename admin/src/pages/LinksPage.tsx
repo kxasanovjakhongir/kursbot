@@ -111,7 +111,7 @@ export default function LinksPage() {
     <>
       <PageHeader
         title="Kampaniya linklari"
-        subtitle="Reklama (Instagram, TikTok, …) uchun darslikka olib boradigan link: bot va Mini App shu darslikni ochadi, kirishlar va buyurtmalar hisoblanadi"
+        subtitle="Reklama (Instagram, TikTok, …) uchun darslikka olib boradigan link: bot shu darslikni ochadi, kirishlar va buyurtmalar hisoblanadi"
         action={
           <Button onClick={() => setForm({ ...EMPTY, productId: products[0] ? String(products[0].id) : "" })} disabled={products.length === 0}>
             <Plus className="h-4 w-4" /> Link yaratish
@@ -147,7 +147,7 @@ export default function LinksPage() {
                       <Th>Link / mahsulot</Th>
                       <Th>Manba</Th>
                       <Th className="text-right" title="Unique bosishlar (tracking link orqali)">Bosish</Th>
-                      <Th className="text-right" title="Link orqali botga yoki Mini App'ga kirgan unique foydalanuvchilar">Kirgan</Th>
+                      <Th className="text-right" title="Link orqali botga kirgan unique foydalanuvchilar">Kirgan</Th>
                       <Th className="text-right" title="Telefon raqamini ulashgan">Ro'yxat</Th>
                       <Th className="text-right" title="Kurs ma'lumotini ko'rgan">Ko'rgan</Th>
                       <Th className="text-right">Buyurtma</Th>
@@ -164,7 +164,6 @@ export default function LinksPage() {
                         <div className="font-mono text-xs text-gray-500">{l.code}</div>
                         {l.urls.tracked && <CopyLink url={l.urls.tracked} label="Tracking link" />}
                         {l.urls.bot && <CopyLink url={l.urls.bot} label="Bot linki" />}
-                        {l.urls.app && <CopyLink url={l.urls.app} label="Mini App linki" />}
                         <div className="mt-1 text-xs text-gray-700">
                           📚 {l.product.title} {!l.product.isActive && <Badge tone="yellow">nofaol</Badge>}
                         </div>
@@ -277,12 +276,6 @@ export default function LinksPage() {
                 className="font-mono"
               />
             </Field>
-            {meta.data && !meta.data.appLinks && (
-              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
-                Mini App linki (…?startapp=kod) uchun .env ga WEB_APP_SHORT_NAME (BotFather'dagi Mini App qisqa nomi) ni yozing. Bot linki baribir ishlaydi va
-                undagi tugma Mini App'ni shu darslik sahifasida ochadi.
-              </p>
-            )}
           </form>
         )}
       </Modal>
@@ -305,12 +298,6 @@ export default function LinksPage() {
               </>
             ) : (
               <p className="text-red-600">Bot username aniqlanmadi — bot tokenini tekshiring</p>
-            )}
-            {created.app && (
-              <>
-                <p className="mt-2 font-medium text-gray-800">Mini App linki (to'g'ridan-to'g'ri ilova)</p>
-                <CopyLink url={created.app} label="Mini App linki" />
-              </>
             )}
           </div>
         )}

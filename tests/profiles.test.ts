@@ -187,7 +187,7 @@ describe.skipIf(!enabled)("test foydalanuvchi profillari va chegaraviy holatlar"
     await prisma.notification.createMany({ data: Array.from({ length: 300 }, (_, i) => ({ userId: user.id, kind: "info" as const, text: `xabar ${i}` })) });
     calls.length = 0;
     const t0 = Date.now();
-    await bot.handleUpdate(cb(u, "nav:pur:1"));
+    await bot.handleUpdate(cb(u, "nav:profile")); // 150 buyurtma statistikasi
     await bot.handleUpdate(cb(u, "nav:notif:3"));
     expect(Date.now() - t0).toBeLessThan(2000);
     expect(sentTo(7112).length).toBe(2);

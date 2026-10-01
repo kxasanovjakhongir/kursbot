@@ -7,8 +7,8 @@ import { getActiveProduct } from "./products";
 import { PAID_STATUSES } from "./orders";
 
 /**
- * Kampaniya (deep link) havolalari: t.me/<bot>?start=<kod> va Mini App ?startapp=<kod>.
- * Bot ham, Mini App ham kodni shu servis orqali aniqlaydi — baza yagona manba.
+ * Kampaniya (deep link) havolalari: t.me/<bot>?start=<kod>.
+ * Bot kodni shu servis orqali aniqlaydi — baza yagona manba.
  *
  * Kod formati: kichik lotin harflari, raqam va "-" (3–32). "_" ishlatilmaydi — eski
  * "<mahsulot>_<manba>" (masalan 4b_instagram) havolalari avvalgidek ishlashi uchun.
@@ -17,8 +17,6 @@ export const LINK_CODE_RE = /^[a-z0-9][a-z0-9-]{2,31}$/;
 
 /** Bir foydalanuvchining bir linkni qayta-qayta bosishi shu oraliqda bitta kirish hisoblanadi */
 const VISIT_DEDUP_MS = 30 * 60_000;
-/** Mini App asosiy sahifasida "Siz uchun" kartasi shu muddat ko'rinadi */
-const CONTEXT_DAYS = 7;
 
 // O'xshash belgilar (0/o, 1/l) yo'q — reklamada qo'lda yozilsa ham adashtirilmaydi
 const ALPHABET = "abcdefghjkmnpqrstuvwxyz23456789";
@@ -37,7 +35,7 @@ export type Entry =
   | { kind: "unavailable" };
 
 /**
- * start / startapp parametrini aniqlaydi. Parametrga ishonilmaydi: format tekshiriladi,
+ * start parametrini aniqlaydi. Parametrga ishonilmaydi: format tekshiriladi,
  * kod bazadan qidiriladi, link va mahsulot faol bo'lishi shart.
  */
 export async function resolveEntry(payload: string | null | undefined): Promise<Entry> {
@@ -76,30 +74,18 @@ export async function recordLinkVisit(user: Pick<User, "id">, link: CampaignLink
   ]);
 }
 
-/** Mini App: foydalanuvchi yaqinda link orqali kelgan mahsulot (asosiy sahifada birinchi ko'rsatiladi) */
-export async function recentLinkProduct(user: Pick<User, "lastLinkId" | "lastLinkAt">): Promise<Product | null> {
-  if (!user.lastLinkId || !user.lastLinkAt || Date.now() - user.lastLinkAt.getTime() > CONTEXT_DAYS * 86400_000) return null;
-  const link = await prisma.campaignLink.findUnique({ where: { id: user.lastLinkId }, include: { product: true } });
-  return link?.isActive && link.product.isActive ? link.product : null;
-}
-
-/** Tracking redirect uchun ochiq manzil: PUBLIC_URL yoki (bitta serverda) WEB_APP_URL domeni */
+/** Tracking redirect uchun ochiq manzil (PUBLIC_URL) */
 function publicOrigin(): string | null {
-  if (config.PUBLIC_URL) return config.PUBLIC_URL.replace(/\/$/, "");
-  return config.WEB_APP_URL ? new URL(config.WEB_APP_URL).origin : null;
+  return config.PUBLIC_URL ? config.PUBLIC_URL.replace(/\/$/, "") : null;
 }
 
-/**
- * bot — to'g'ridan-to'g'ri Telegram linki; tracked — bosishlarni ham sanaydigan redirect (reklama uchun tavsiya);
- * app — Mini App linki (WEB_APP_SHORT_NAME berilgan bo'lsa)
- */
-export function linkUrls(code: string, username: string | null): { bot: string | null; tracked: string | null; app: string | null } {
-  if (!username) return { bot: null, tracked: null, app: null };
+/** bot — to'g'ridan-to'g'ri Telegram linki; tracked — bosishlarni ham sanaydigan redirect (reklama uchun tavsiya) */
+export function linkUrls(code: string, username: string | null): { bot: string | null; tracked: string | null } {
+  if (!username) return { bot: null, tracked: null };
   const origin = publicOrigin();
   return {
     bot: `https://t.me/${username}?start=${code}`,
     tracked: origin ? `${origin}/l/${code}` : null,
-    app: config.WEB_APP_SHORT_NAME ? `https://t.me/${username}/${config.WEB_APP_SHORT_NAME}?startapp=${code}` : null,
   };
 }
 
@@ -155,7 +141,7 @@ export async function createLink(input: CreateLinkInput): Promise<CampaignLink> 
 
 /**
  * Link funnel'i (butun davr uchun). Kohorta — link orqali kirgan foydalanuvchilar:
- * bosish → kirish (/start yoki Mini App) → ro'yxatdan o'tish (telefon) → kursni ko'rish → buyurtma → to'lov.
+ * bosish → kirish (/start) → ro'yxatdan o'tish (telefon) → kursni ko'rish → buyurtma → to'lov.
  */
 export interface LinkStats {
   clicks: number;

@@ -36,9 +36,6 @@ jobs:
       - run: npm run build
       - run: npm --prefix admin ci
       - run: npm --prefix admin run build
-      - run: npm --prefix webapp ci
-      - run: npm --prefix webapp run lint
-      - run: npm --prefix webapp run build
 
   # Xavfsizlik: production bog'liqliklarida critical zaiflik bo'lsa — to'xtatadi (hisobot har doim chiqadi)
   audit:
@@ -53,7 +50,6 @@ jobs:
       - run: npm audit --omit=dev || true
       - run: npm audit --omit=dev --audit-level=critical
       - run: npm --prefix admin ci && npm --prefix admin audit --omit=dev --audit-level=high
-      - run: npm --prefix webapp ci && npm --prefix webapp audit --omit=dev --audit-level=high
 
   # Deploy skriptlari va nginx konfiguratsiyasi
   ops:
@@ -98,6 +94,6 @@ jobs:
         run: |
           test "$(docker image inspect darslik-bot:ci --format '{{.Config.User}}')" = "node"
           docker image inspect darslik-bot:ci --format '{{json .Config.Healthcheck}}' | grep -q ready
-          docker run --rm --entrypoint sh darslik-bot:ci -c 'test ! -e .env && test -f dist/index.js && test -f admin/dist/index.html && test -f webapp/dist/index.html'
+          docker run --rm --entrypoint sh darslik-bot:ci -c 'test ! -e .env && test -f dist/index.js && test -f admin/dist/index.html'
           docker image ls darslik-bot:ci --format 'Hajmi: {{.Size}}'
 

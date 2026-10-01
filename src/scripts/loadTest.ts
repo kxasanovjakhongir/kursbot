@@ -7,7 +7,6 @@
  *   npm run loadtest -- spike   --bursts 5000,20000
  *   npm run loadtest -- soak    --minutes 30 --rate 200      (aniq heap: NODE_OPTIONS=--expose-gc)
  *   npm run loadtest -- failure --rate 200                    (Telegram 10 s ishlamaydi)
- *   npm run loadtest -- http    --users 1000 --concurrency 100 --requests 5000
  *
  * bot rejimi: update lar berilgan tezlikda (rate/s) keladi; kechikish = kelgan paytdan
  * javob tugaguncha (navbatda kutish ham kiradi). --concurrency 1 — grammY'ning oddiy
@@ -16,14 +15,10 @@
  * FAQAT test bazasida ishga tushiring: foydalanuvchilar va buyurtmalar yaratiladi.
  */
 import { performance } from "node:perf_hooks";
-import type { AddressInfo } from "node:net";
-import { Api } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 import { config } from "../config";
 import { prisma } from "../db";
-import { createApp } from "../api/app";
 import { createBot } from "../bot/bot";
-import { signInitData } from "../lib/telegramAuth";
 import { botUpdates } from "../lib/metrics";
 
 // ---------- Argumentlar ----------
@@ -411,85 +406,9 @@ async function failureLoad(): Promise<void> {
   printSummary(after.title, after.sum, after.extra);
 }
 
-// ---------- 2. Mini App HTTP API ----------
-
-async function httpLoad(): Promise<void> {
-  const users = num("users", 200);
-  const concurrency = num("concurrency", 50);
-  const requests = num("requests", 2000);
-  await seedProducts();
-
-  const token = config.BOT_TOKEN;
-  const api = new Api(token, { fetch: fakeFetch });
-  const app = createApp({ runtime: { api, mode: "polling", tokenSource: "env", isRunning: () => true } });
-  const server = app.listen(0);
-  // Production (index.ts) bilan bir xil: keep-alive klientnikidan uzun — yopilayotgan soket qayta ishlatilmaydi
-  server.keepAliveTimeout = 65_000;
-  server.headersTimeout = 66_000;
-  await new Promise((r) => server.once("listening", r));
-  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/app`;
-
-  // Har bir virtual foydalanuvchi initData bilan kiradi (auth ham o'lchanadi)
-  const tokens: string[] = [];
-  for (let i = 0; i < users; i++) {
-    const initData = signInitData({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id: BASE_ID + i, first_name: `U${i}` }) }, token);
-    const res = await fetch(`${base}/auth/telegram`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-forwarded-for": `10.0.${i >> 8}.${i & 255}` },
-      body: JSON.stringify({ initData }),
-    });
-    const body: unknown = await res.json();
-    if (typeof body === "object" && body !== null && "token" in body && typeof body.token === "string") tokens.push(body.token);
-  }
-  if (tokens.length === 0) throw new Error("Hech bir foydalanuvchi kira olmadi");
-
-  const paths = ["/products", "/me", "/orders?pageSize=10", "/purchases", "/notifications"];
-  const latencies: number[] = [];
-  let errors = 0;
-  let sent = 0;
-  const errorKinds = new Map<string, number>();
-  const countError = (kind: string) => {
-    errors++;
-    errorKinds.set(kind, (errorKinds.get(kind) ?? 0) + 1);
-  };
-  const db0 = await dbStats();
-  const stopMeter = resourceMeter();
-  const started = performance.now();
-
-  const worker = async (w: number) => {
-    while (sent < requests) {
-      const n = sent++;
-      const i = n % tokens.length;
-      const t0 = performance.now();
-      try {
-        const res = await fetch(`${base}${paths[n % paths.length]}`, {
-          headers: { authorization: `Bearer ${tokens[i]}`, "x-forwarded-for": `10.1.${w >> 8}.${w & 255}` },
-        });
-        await res.arrayBuffer();
-        if (!res.ok) countError(`HTTP ${res.status}`);
-      } catch (err) {
-        const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : String(err);
-        countError(cause.slice(0, 60));
-      }
-      latencies.push(performance.now() - t0);
-    }
-  };
-  await Promise.all(Array.from({ length: concurrency }, (_, w) => worker(w)));
-
-  const wall = performance.now() - started;
-  const resources = stopMeter();
-  const db1 = await dbStats();
-  server.close();
-  printSummary(`HTTP (Mini App API): ${tokens.length} foydalanuvchi, concurrency=${concurrency}`, summarize(latencies, errors, wall), {
-    ...resources,
-    "DB tranzaksiyalar": Number(db1.xact_commit - db0.xact_commit),
-    ...(errorKinds.size ? { "xato turlari": [...errorKinds].map(([k, v]) => `${k}: ${v}`).join("; ") } : {}),
-  });
-}
-
 async function main() {
   assertTestDatabase();
-  const modes: Record<string, () => Promise<void>> = { bot: botLoad, http: httpLoad, stress: stressLoad, spike: spikeLoad, soak: soakLoad, failure: failureLoad };
+  const modes: Record<string, () => Promise<void>> = { bot: botLoad, stress: stressLoad, spike: spikeLoad, soak: soakLoad, failure: failureLoad };
   await (modes[mode] ?? botLoad)();
   await prisma.$disconnect();
   process.exit(0);

@@ -9,6 +9,7 @@ import { invalidateSettings } from "../src/services/settings";
 import { invalidateTexts } from "../src/i18n";
 import { uz } from "../src/i18n/locales/uz";
 import { extractLessonMedia, moveLesson } from "../src/services/lessons";
+import { approveAndNotify } from "../src/bot/admin/reviewActions";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
 
@@ -71,7 +72,7 @@ function msg(from: TgUser, extra: Record<string, unknown>): Update {
 const text = (t: string, from: TgUser = AZIZ) =>
   msg(from, { text: t, entities: t.startsWith("/") ? [{ type: "bot_command", offset: 0, length: t.split(" ")[0].length }] : undefined });
 
-/** Video: hajmi Telegram limitlariga yaqin (3.5 GB) — ilovada sun'iy limit yo'qligini tekshirish uchun */
+/** Video: hajmi Telegram limitlariga yaqin (3.5 GB) — kodda sun'iy limit yo'qligini tekshirish uchun */
 const video = (from: TgUser, uniq = "vu1", extra: Record<string, unknown> = {}) =>
   msg(from, {
     video: { file_id: `vid-${uniq}`, file_unique_id: uniq, width: 1920, height: 1080, duration: 3725, mime_type: "video/mp4", file_name: "dars.mp4", file_size: 3_500_000_000 },
@@ -341,6 +342,63 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     expect(lastButtons().some((b) => b.callback_data === "p:js")).toBe(false);
     await send(callback("p:js", other));
     expect(answers()).toContain(uz.error_not_found);
+  });
+
+  it("TEST 6 + 7: sotib olmagan foydalanuvchi kursni tanlaydi — tanishtiruv video, tavsif, narx, Sotib olish; darslar yopiq; Mini App yo'q", async () => {
+    await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
+    await prisma.product.update({ where: { code: "js" }, data: { videoFileId: "intro-js", description: "JavaScript asoslari" } });
+    const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
+    await send(video(ADMIN, "main1"), callback(`al:pick:${course.id}`, ADMIN), text("Asosiy dars", ADMIN));
+    calls = [];
+
+    await send(callback("p:js"));
+    const intro = calls.find((c) => c.method === "sendVideo");
+    expect(intro?.payload.video).toBe("intro-js"); // tanishtiruv (preview) videosi — ochiq
+    expect(String(intro?.payload.caption)).toContain("JavaScript asoslari");
+    expect(String(intro?.payload.caption)).toContain("500 000");
+    const kb = buttons(intro);
+    expect(kb.some((b) => b.callback_data === "buy:js")).toBe(true);
+    expect(kb.some((b) => b.callback_data === "nav:cat:1")).toBe(true); // ⬅️ Ortga
+    expect(kb.some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
+    // Asosiy dars videosi yuborilmagan
+    expect(calls.filter((c) => c.method === "sendVideo").map((c) => c.payload.video)).toEqual(["intro-js"]);
+  });
+
+  it("TEST 8 + 9: to'lov tasdiqlanadi — buyurtma va kirish bazada, «To'lov muvaffaqiyatli» + «📚 Kursni boshlash» (xaridlar bo'limisiz); darslar ochiladi", async () => {
+    const user = await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
+    const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
+    await send(video(ADMIN, "main2"), callback(`al:pick:${course.id}`, ADMIN), text("1-dars", ADMIN));
+    await send(callback("buy:js"));
+    const order = await prisma.order.findFirstOrThrow({ where: { userId: user.id } });
+    await prisma.order.update({ where: { id: order.id }, data: { status: "receipt_sent" } });
+    const admin = await prisma.admin.findFirstOrThrow();
+    calls = [];
+
+    expect(await approveAndNotify(bot.api, order.id, { adminId: admin.id })).toBe(true);
+    expect(await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).toMatchObject({ status: "approved" });
+    expect(await prisma.accessGrant.count({ where: { userId: user.id, productId: course.id, revokedAt: null } })).toBe(1);
+    const msgToUser = calls.find((c) => c.method === "sendMessage" && c.payload.chat_id === AZIZ.id);
+    expect(String(msgToUser?.payload.text)).toContain("To'lov muvaffaqiyatli");
+    expect(buttons(msgToUser).find((b) => b.callback_data === "p:js")?.text).toBe(uz.btn_start_course);
+    expect(buttons(msgToUser).some((b) => /xarid/i.test(b.text))).toBe(false);
+
+    // «Kursni boshlash» → darslar
+    await send(callback("p:js"));
+    const lesson = await prisma.lesson.findFirstOrThrow();
+    expect(lastButtons().some((b) => b.callback_data === `l:${lesson.id}`)).toBe(true);
+  });
+
+  it("«Mening xaridlarim» yo'q: eski tugma, buyruq va matn hech narsa ochmaydi", async () => {
+    await makeBuyer("js");
+    calls = [];
+    await send(callback("nav:pur:1"), callback("purchases"));
+    expect(answers().every((a) => a === uz.error_stale_button)).toBe(true);
+    await send(text("/purchases"));
+    expect(lastText()).toBe(uz.error_unknown_command);
+    await send(text("🧾 Mening xaridlarim"));
+    expect(lastText()).not.toMatch(/xaridlarim/i);
+    const all = calls.map((c) => JSON.stringify(c.payload)).join("\n");
+    expect(all).not.toMatch(/xaridlarim|nav:pur|web_app/i);
   });
 
   it("muddati o'tgan yoki bekor qilingan kirish bilan video yuborilmaydi", async () => {

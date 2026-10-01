@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../db";
-import { config } from "../../config";
 import { logActivity } from "../../services/activity";
 import { botUsername } from "../../services/botInfo";
 import { createLink, LinkInputError, linkStats, linkUrls } from "../../services/campaignLinks";
@@ -38,7 +37,7 @@ export function linksRouter(rt: BotRuntime): Router {
       orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
       select: { id: true, code: true, title: true, isActive: true },
     });
-    res.json({ products, botUsername: await botUsername(rt.api), appLinks: !!config.WEB_APP_SHORT_NAME });
+    res.json({ products, botUsername: await botUsername(rt.api) });
   });
 
   r.get("/", async (req, res) => {

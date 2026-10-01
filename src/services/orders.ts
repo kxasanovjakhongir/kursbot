@@ -242,33 +242,3 @@ export async function pendingReceiptOrders(limit = 20) {
     take: limit,
   });
 }
-
-/** Mijozning buyurtmalari (Mini App: "Buyurtmalar tarixi") */
-export async function listUserOrders(userId: bigint, page: number, pageSize: number) {
-  await expireStaleOrders(userId);
-  const where = { userId };
-  const [items, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-      include: { product: { select: { code: true, title: true } } },
-    }),
-    prisma.order.count({ where }),
-  ]);
-  return { items, total };
-}
-
-/** Faqat o'z buyurtmasi — boshqa odamning raqamini yozib ko'rish befoyda */
-export async function getUserOrder(userId: bigint, orderId: bigint) {
-  await expireStaleOrders(userId);
-  return prisma.order.findFirst({
-    where: { id: orderId, userId },
-    include: {
-      product: { select: { code: true, title: true } },
-      card: { select: { number: true, holder: true, bank: true } },
-      receipts: { select: { id: true, createdAt: true }, orderBy: { id: "desc" }, take: 1 },
-    },
-  });
-}

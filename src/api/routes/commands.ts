@@ -8,7 +8,7 @@ import { HttpError } from "../errors";
 import { clientIp, parseBody, parseId } from "../validate";
 
 // Bu buyruqlar savdo oqimiga tegishli — bazadagi javob bilan almashtirilmaydi
-const RESERVED = new Set(["start", "admin", "purchases", "pending", "products"]);
+const RESERVED = new Set(["start", "admin", "pending", "products"]);
 
 const commandField = z
   .string()

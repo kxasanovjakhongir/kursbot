@@ -13,7 +13,7 @@ import { ID_RE } from "../ui/callbacks";
 export const receipt = new Composer<BotContext>();
 const pm = receipt.chatType("private");
 
-export const RECEIPT_MIME = new Set(["application/pdf", "image/jpeg", "image/png"]);
+const RECEIPT_MIME = new Set(["application/pdf", "image/jpeg", "image/png"]);
 
 /**
  * Buyurtmasi aniqlanmagan chek vaqtincha shu yerda turadi, mijoz tugma bosguncha.

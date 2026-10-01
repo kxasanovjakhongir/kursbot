@@ -34,14 +34,6 @@ RUN npm ci
 COPY admin ./
 RUN npm run build
 
-# ---------- Telegram Mini App (React) ----------
-FROM node:22-alpine AS webapp
-WORKDIR /webapp
-COPY webapp/package*.json ./
-RUN npm ci
-COPY webapp ./
-RUN npm run build
-
 # ---------- Runtime ----------
 FROM node:22-alpine AS runtime
 # tini — PID 1: SIGTERM ni node ga uzatadi (graceful shutdown), zombie jarayonlarni yig'adi
@@ -52,7 +44,6 @@ COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node --from=deps /app/prisma ./prisma
 COPY --chown=node:node --from=admin /admin/dist ./admin/dist
-COPY --chown=node:node --from=webapp /webapp/dist ./webapp/dist
 COPY --chown=node:node package.json ./
 # Root emas: kod va fayllar o'zgartirilmaydi, faqat o'qiladi
 USER node

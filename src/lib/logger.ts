@@ -31,8 +31,6 @@ export const logger = pino(
         "*.headers.authorization",
         "headers.cookie",
         "*.headers.cookie",
-        "initData",
-        "*.initData",
         "secret",
         "*.secret",
         "secret_token",

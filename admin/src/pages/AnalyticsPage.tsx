@@ -159,7 +159,7 @@ export default function AnalyticsPage() {
                 <Funnel
                   steps={[
                     { label: "Link bosildi", value: a.funnel.clicks, hint: "Tracking link (/l/…) orqali unique bosishlar" },
-                    { label: "Botga kirdi", value: a.funnel.started, hint: "/start yoki Mini App" },
+                    { label: "Botga kirdi", value: a.funnel.started, hint: "/start bosgan" },
                     { label: "Ro'yxatdan o'tdi", value: a.funnel.registered, hint: "Telefon raqamini ulashdi" },
                     { label: "Kursni ko'rdi", value: a.funnel.viewed },
                     { label: "Buyurtma berdi", value: a.funnel.ordered },
@@ -221,7 +221,7 @@ export default function AnalyticsPage() {
                   <tr>
                     <Th>Kurs</Th>
                     <Th className="text-right" title="Link orqali kirgan yoki kursni ko'rgan unique foydalanuvchilar">Qiziqqan</Th>
-                    <Th className="text-right" title="Shu kurs linki yoki deep link bilan botga/Mini App'ga kirganlar">Link orqali</Th>
+                    <Th className="text-right" title="Shu kurs linki yoki deep link bilan botga kirganlar">Link orqali</Th>
                     <Th className="text-right">Ko'rgan</Th>
                     <Th className="text-right" title="Buyurtma berganlar">Lead</Th>
                     <Th className="text-right">Xarid</Th>

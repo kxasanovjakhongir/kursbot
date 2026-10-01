@@ -76,13 +76,12 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
   // Tasdiqlash bazada bajarildi — xabar yuborilmasa ham (tarmoq) admin qayta tasdiqlashga urinmasin
   let sent = null;
   try {
-    if (withLinks.length > 0) {
-      const kb = new InlineKeyboard();
-      for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: g.product.title }), g.inviteLink!).row();
-      sent = await notifyUser(api, order.user, "success", await translate(lang, "approved", { kun: settings.invite_link_days }), { reply_markup: kb });
-    } else {
-      sent = await notifyUser(api, order.user, "success", await translate(lang, "approved_no_link"));
-    }
+    const kb = new InlineKeyboard();
+    for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: g.product.title }), g.inviteLink!).row();
+    // Kurs sahifasi: darslar va kanal havolasi (to'plam bo'lsa — tarkibidagi kurslar)
+    kb.text(label(lang, "btn_start_course"), `p:${order.product.code}`);
+    const text = withLinks.length > 0 ? await translate(lang, "approved", { kun: settings.invite_link_days }) : await translate(lang, "approved_no_link");
+    sent = await notifyUser(api, order.user, "success", text, { reply_markup: kb });
   } catch (err) {
     logger.error({ err, orderId: orderId.toString() }, "tasdiqlash xabari mijozga yuborilmadi");
   }
@@ -96,7 +95,7 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
     ).catch(() => undefined);
   }
   if (!sent) {
-    await sendToAdminGroup(api, `⚠️ Buyurtma #${orderId}: mijozga xabar yetkazilmadi (botni bloklagan yoki chat topilmadi). Linkni «Mening xaridlarim» dan olishini ayting.`).catch(() => undefined);
+    await sendToAdminGroup(api, `⚠️ Buyurtma #${orderId}: mijozga xabar yetkazilmadi (botni bloklagan yoki chat topilmadi). Link botdagi kurs sahifasida («📚 Darsliklar» → kurs → «🔗 Kanal havolasi»).`).catch(() => undefined);
   }
   return true;
 }

@@ -17,6 +17,7 @@ import { recordLinkVisit, resolveEntry } from "../../services/campaignLinks";
 import { cancelOrder, createOrder } from "../../services/orders";
 import { refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
+import { sendLeadToCrm } from "../../services/crm";
 import { getSettings } from "../../services/settings";
 import { prisma } from "../../db";
 import { config } from "../../config";
@@ -145,6 +146,8 @@ pm.on("message:contact", async (ctx) => {
   const user = await setPhone(ctx.user!.id, phone, isForeign);
   ctx.user = user;
   await trackEvent(user.id, "phone", { foreign: isForeign, update: hadPhone });
+  // CRM'ga lid (fon rejimida — CRM sekin yoki ishlamasa ham foydalanuvchi kutmaydi)
+  void sendLeadToCrm(user);
 
   // Profildan raqamni yangilash
   if (hadPhone) {

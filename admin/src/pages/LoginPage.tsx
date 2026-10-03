@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { Bot, Lock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { errorMessage } from "../lib/api";
@@ -15,7 +15,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   const from = (location.state as { from?: string } | null)?.from ?? "/";
-  if (user) return <Navigate to={from} replace />;
+  if (user) return <Navigate to={user.mustChangePassword ? "/profile" : from} replace />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -48,6 +48,11 @@ export default function LoginPage() {
           <Field label="Parol">
             <Input type="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
           </Field>
+          <div className="-mt-2 text-right">
+            <Link to="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-800">
+              Parolni unutdim?
+            </Link>
+          </div>
           {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
           <Button type="submit" className="w-full" loading={loading}>
             <Lock className="h-4 w-4" /> Kirish

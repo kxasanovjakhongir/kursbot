@@ -4,7 +4,10 @@ import { z } from "zod";
 import { prisma } from "../../db";
 import { logActivity } from "../../services/activity";
 import { saveBotToken } from "../../services/botToken";
-import { getSettings, setSetting } from "../../services/settings";
+import { COURSE_NAME_MAX_LENGTH_LIMIT, getSettings, setSetting } from "../../services/settings";
+import { editableTextError, getEditableTexts, isEditableText, saveEditableTexts } from "../../services/texts";
+import { LANGS } from "../../i18n";
+import { normalizeTelegramUsername, TELEGRAM_USERNAME_ERROR } from "../../lib/telegramUsername";
 import { currentUser, requirePermission } from "../auth";
 import { HttpError } from "../errors";
 import type { BotRuntime } from "../runtime";
@@ -72,6 +75,8 @@ export function botRouter(rt: BotRuntime): Router {
       maintenanceMode: s.maintenance_mode,
       workStart: s.work_start,
       workEnd: s.work_end,
+      supportUsername: s.support_username ?? "",
+      courseNameMaxLength: s.course_name_max_length,
     });
   });
 
@@ -82,6 +87,18 @@ export function botRouter(rt: BotRuntime): Router {
     defaultLanguage: z.enum(["uz", "ru", "en"]).optional(),
     workStart: hm.optional(),
     workEnd: hm.optional(),
+    // "Yordam" profili: "@support", "support", "https://t.me/support" → "support"; bo'sh — o'chirish
+    courseNameMaxLength: z.number().int("Butun son bo'lishi kerak").min(1, "Kamida 1").max(COURSE_NAME_MAX_LENGTH_LIMIT, `Ko'pi bilan ${COURSE_NAME_MAX_LENGTH_LIMIT}`).optional(),
+    supportUsername: z
+      .string()
+      .max(64)
+      .transform((v, zctx) => {
+        if (!v.trim()) return null;
+        const username = normalizeTelegramUsername(v);
+        if (!username) zctx.addIssue({ code: "custom", message: TELEGRAM_USERNAME_ERROR });
+        return username ?? z.NEVER;
+      })
+      .optional(),
   });
 
   r.put("/settings", requirePermission("settings.manage"), async (req, res) => {
@@ -110,8 +127,43 @@ export function botRouter(rt: BotRuntime): Router {
       await setSetting("work_end", body.workEnd);
       changed.push(`ish oxiri: ${body.workEnd}`);
     }
+    if (body.courseNameMaxLength !== undefined) {
+      await setSetting("course_name_max_length", body.courseNameMaxLength);
+      changed.push(`kurs nomi uzunligi: ${body.courseNameMaxLength}`);
+    }
+    if (body.supportUsername !== undefined) {
+      await setSetting("support_username", body.supportUsername);
+      changed.push(`yordam: ${body.supportUsername ? `@${body.supportUsername}` : "o'chirildi"}`);
+    }
     await logActivity(currentUser(req).id, "UPDATE_BOT_SETTINGS", `Sozlamalar: ${changed.join(", ") || "o'zgarish yo'q"}`, clientIp(req));
     res.json({ ok: true });
+  });
+
+  // ---------- Bot matnlari: barcha tayyor xabar shablonlari (bo'limlar bo'yicha, til bo'yicha) ----------
+  const langQuery = z.object({ lang: z.enum(LANGS).default("uz") });
+
+  r.get("/texts", requirePermission("settings.manage"), async (req, res) => {
+    const { lang } = langQuery.parse(req.query);
+    res.json(await getEditableTexts(lang));
+  });
+
+  const textsSchema = z
+    .object({
+      lang: z.enum(LANGS, { errorMap: () => ({ message: "Til noto'g'ri" }) }),
+      values: z.record(z.string().max(4096)).refine((v) => Object.keys(v).length <= 200, "Juda ko'p matn"),
+    })
+    .superRefine((body, zctx) => {
+      for (const [key, value] of Object.entries(body.values)) {
+        const error = isEditableText(key) ? editableTextError(key, value) : "Bunday matn yo'q yoki uni tahrirlab bo'lmaydi.";
+        if (error) zctx.addIssue({ code: "custom", path: [key], message: error });
+      }
+    });
+
+  r.put("/texts", requirePermission("settings.manage"), async (req, res) => {
+    const body = parseBody(textsSchema, req);
+    const changed = await saveEditableTexts(body.lang, body.values);
+    await logActivity(currentUser(req).id, "UPDATE_BOT_TEXTS", `Bot matnlari (${body.lang}): ${changed.join(", ") || "o'zgarish yo'q"}`, clientIp(req));
+    res.json(await getEditableTexts(body.lang));
   });
 
   r.put("/maintenance", requirePermission("settings.manage"), async (req, res) => {

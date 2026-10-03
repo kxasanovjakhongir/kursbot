@@ -9,6 +9,7 @@ import { withLease } from "./leases";
 import { runAccessChecks } from "./membership";
 import { expireStaleOrders } from "./orders";
 import { purgeExpiredState } from "./sharedState";
+import { purgeOldSupportButtons, syncSupportButtons } from "./supportButtons";
 
 const DELETE_BATCH = 5000;
 const ERROR_RETENTION_DAYS = 30;
@@ -32,15 +33,18 @@ async function deleteOlderThan(table: "messages" | "events", days: number): Prom
 }
 
 async function maintenance(): Promise<void> {
-  const [messages, events, state, orders, errors] = [
+  const [messages, events, state, orders, errors, supportButtons] = [
     await deleteOlderThan("messages", config.MESSAGE_RETENTION_DAYS),
     await deleteOlderThan("events", config.EVENT_RETENTION_DAYS),
     await purgeExpiredState(),
     await expireStaleOrders(),
     // Texnik xatolar: 30 kundan beri takrorlanmaganlari o'chiriladi
     (await prisma.errorLog.deleteMany({ where: { lastSeenAt: { lt: new Date(Date.now() - ERROR_RETENTION_DAYS * 86400_000) } } })).count,
+    await purgeOldSupportButtons(),
   ];
-  if (messages || events || state || orders || errors) logger.info({ messages, events, state, orders, errors }, "texnik tozalash");
+  if (messages || events || state || orders || errors || supportButtons) {
+    logger.info({ messages, events, state, orders, errors, supportButtons }, "texnik tozalash");
+  }
 }
 
 interface Job {
@@ -57,6 +61,8 @@ const JOBS: Job[] = [
   // Broadcast worker o'zi lease boshqaradi (uzoq ishlaydi va lease ni yangilab turadi)
   { name: "broadcast", intervalMs: 5_000, leaseMs: 0, firstRunMs: 2_000, run: processBroadcasts },
   { name: "access", intervalMs: 5 * 60_000, leaseMs: 4 * 60_000, firstRunMs: 30_000, run: runAccessChecks },
+  // Paneldan support username o'zgarsa — eski xabarlardagi "Yordam" tugmalari yangi havolaga
+  { name: "support-buttons", intervalMs: 20_000, leaseMs: 10 * 60_000, firstRunMs: 15_000, run: async (api) => void (await syncSupportButtons(api)) },
   { name: "maintenance", intervalMs: 60 * 60_000, leaseMs: 30 * 60_000, firstRunMs: 60_000, run: () => maintenance() },
 ];
 

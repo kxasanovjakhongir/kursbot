@@ -1,13 +1,22 @@
 import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { api, errorMessage, tokenStore } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 import { fmtDateTime } from "../lib/format";
 import type { PanelUser } from "../lib/types";
 import { Badge, Button, Card, CardHeader, Field, Input, PageHeader } from "../components/ui";
 
+/** Backend dagi talab bilan bir xil: kamida 8 belgi, harf va raqam */
+function passwordProblem(p: string): string | null {
+  if (p.length < 8) return "Parol kamida 8 belgidan iborat bo'lishi kerak";
+  if (!/\p{L}/u.test(p) || !/\d/.test(p)) return "Parolda kamida bitta harf va bitta raqam bo'lishi kerak";
+  return null;
+}
+
 export default function ProfilePage() {
-  const { user, setUser } = useAuth();
+  const { user, setUser, setSession } = useAuth();
+  const navigate = useNavigate();
   const toast = useToast();
   const [name, setName] = useState(user?.name ?? "");
   const [savingName, setSavingName] = useState(false);
@@ -15,6 +24,7 @@ export default function ProfilePage() {
   const [savingPw, setSavingPw] = useState(false);
 
   if (!user) return null;
+  const forced = user.mustChangePassword;
 
   const saveName = async (e: FormEvent) => {
     e.preventDefault();
@@ -32,14 +42,21 @@ export default function ProfilePage() {
 
   const savePw = async (e: FormEvent) => {
     e.preventDefault();
+    const problem = passwordProblem(pw.newPassword);
+    if (problem) return toast.error(problem);
     if (pw.newPassword !== pw.confirm) return toast.error("Yangi parollar mos emas");
     setSavingPw(true);
     try {
-      // Parol o'zgarsa eski tokenlar bekor bo'ladi — server yangisini beradi
-      const res = await api.put<{ token: string }>("/auth/password", { currentPassword: pw.currentPassword, newPassword: pw.newPassword });
-      tokenStore.set(res.data.token);
+      // Parol o'zgarsa boshqa qurilmalardagi sessiyalar bekor bo'ladi — server shu qurilma uchun yangi token beradi.
+      // Kod (OTP) bilan kirilgan bo'lsa joriy parol so'ralmaydi
+      const res = await api.put<{ token: string; user: PanelUser }>("/auth/password", {
+        ...(forced ? {} : { currentPassword: pw.currentPassword }),
+        newPassword: pw.newPassword,
+      });
+      setSession(res.data.token, res.data.user);
       setPw({ currentPassword: "", newPassword: "", confirm: "" });
       toast.success("Parol o'zgartirildi");
+      if (forced) navigate("/", { replace: true });
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {
@@ -70,13 +87,15 @@ export default function ProfilePage() {
           </form>
         </Card>
         <Card>
-          <CardHeader title="Parolni o'zgartirish" />
+          <CardHeader title="Parolni o'zgartirish" subtitle={forced ? "Kod orqali kirdingiz — joriy parol so'ralmaydi" : undefined} />
           <form onSubmit={savePw} className="space-y-4 p-5">
-            <Field label="Joriy parol">
-              <Input type="password" autoComplete="current-password" required value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} />
-            </Field>
-            <Field label="Yangi parol" hint="Kamida 8 belgi">
-              <Input type="password" autoComplete="new-password" minLength={8} required value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
+            {!forced && (
+              <Field label="Joriy parol">
+                <Input type="password" autoComplete="current-password" required value={pw.currentPassword} onChange={(e) => setPw({ ...pw, currentPassword: e.target.value })} />
+              </Field>
+            )}
+            <Field label="Yangi parol" hint="Kamida 8 belgi, kamida bitta harf va bitta raqam">
+              <Input type="password" autoComplete="new-password" minLength={8} required autoFocus={forced} value={pw.newPassword} onChange={(e) => setPw({ ...pw, newPassword: e.target.value })} />
             </Field>
             <Field label="Yangi parolni takrorlang">
               <Input type="password" autoComplete="new-password" minLength={8} required value={pw.confirm} onChange={(e) => setPw({ ...pw, confirm: e.target.value })} />

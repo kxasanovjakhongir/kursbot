@@ -13,6 +13,8 @@ export interface PanelUser {
   updatedAt: string;
   /** Biriktirilgan Telegram hisobi — shu odam botda ham admin */
   telegramId: string | null;
+  /** "Parolni unutdim" kodi bilan kirgan — yangi parol o'rnatmaguncha boshqa bo'limlar yopiq */
+  mustChangePassword: boolean;
   /** Botdagi holati (ro'yxatda): faol bo'lsa rol */
   bot?: { role: Role } | null;
 }
@@ -186,6 +188,41 @@ export interface BotSettings {
   maintenanceMode: boolean;
   workStart: string;
   workEnd: string;
+  /** "Yordam" tugmasi yo'naltiradigan username (@ siz); bo'sh — sozlanmagan */
+  supportUsername: string;
+  /** Kurs nomining botda ko'rinadigan maksimal belgilar soni (1–100) */
+  courseNameMaxLength: number;
+}
+
+export type BotTextFormat = "html" | "popup" | "part";
+
+export interface BotTextItem {
+  key: string;
+  group: string;
+  title: string;
+  hint: string | null;
+  /** html — oddiy xabar, popup — tugma oynasi (formatlashsiz), part — boshqa xabarning qismi */
+  format: BotTextFormat;
+  /** Ishlatish mumkin bo'lgan {o'zgaruvchilar} */
+  vars: string[];
+  /** Albatta bo'lishi kerak bo'lgan o'zgaruvchilar */
+  required: string[];
+  max: number;
+  value: string;
+  default: string;
+  overridden: boolean;
+}
+
+export interface BotTextGroup {
+  id: string;
+  title: string;
+  description: string;
+}
+
+export interface BotTexts {
+  lang: "uz" | "ru" | "en";
+  groups: BotTextGroup[];
+  items: BotTextItem[];
 }
 
 export interface ActivityLog {

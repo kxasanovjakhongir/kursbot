@@ -18,9 +18,8 @@ import { cancelOrder, createOrder } from "../../services/orders";
 import { refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
 import { sendLeadToCrm } from "../../services/crm";
-import { getSettings } from "../../services/settings";
+import { displayCourseName, getSettings, getSupportUrl } from "../../services/settings";
 import { prisma } from "../../db";
-import { config } from "../../config";
 
 export const customer = new Composer<BotContext>();
 const pm = customer.chatType("private");
@@ -35,7 +34,7 @@ async function showCatalog(ctx: BotContext, page = 1): Promise<void> {
 
 async function askPhone(ctx: BotContext, product: Product | null): Promise<void> {
   const text = product
-    ? await ctx.t("welcome_phone", { ism: firstName(ctx.user!), mahsulot: product.title })
+    ? await ctx.t("welcome_phone", { ism: firstName(ctx.user!), mahsulot: await displayCourseName(product.title) })
     : await ctx.t("welcome_phone_generic", { ism: firstName(ctx.user!) });
   await ctx.reply(text, { parse_mode: "HTML", reply_markup: phoneKeyboard(ctx.lang) });
 }
@@ -56,10 +55,10 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
     // ko'rsatib bo'lmaydi (sotib olish tugmasi ishlamasdi), katalogga qaytariladi
     const missing = own.missing.find((p) => p.isActive && !p.deletedAt);
     if (!missing) {
-      await ctx.reply(await ctx.t("error_not_found"));
+      await ctx.reply(await ctx.t("error_not_found"), { parse_mode: "HTML" });
       return showCatalog(ctx);
     }
-    await ctx.reply(await ctx.t("bundle_partial"));
+    await ctx.reply(await ctx.t("bundle_partial"), { parse_mode: "HTML" });
     return presentProduct(ctx, missing);
   }
 
@@ -70,11 +69,13 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
 
   const screen = await productScreen(ctx, product);
   if (product.videoFileId) {
+    const vars = { mahsulot: await displayCourseName(product.title) };
     // Avval tanishtiruv videosi (hamma ko'radi), keyin alohida xabarda tavsif, narx va «Sotib olish» —
     // foydalanuvchi videoni ko'rib bo'lgach pastdagi tugmani bosadi
     try {
       await ctx.replyWithVideo(product.videoFileId, {
-        caption: await ctx.t("intro_video_caption", { mahsulot: product.title }),
+        // Sarlavha + paneldan tahrirlanadigan tanishtiruv matni
+        caption: `${await ctx.t("intro_video_title", vars)}\n\n${await ctx.t("intro_video_text", vars)}`,
         parse_mode: "HTML",
         supports_streaming: true,
       });
@@ -110,11 +111,11 @@ pm.command("start", async (ctx) => {
 
   if (product) {
     // Telefon bo'lmasa askPhone o'zi mahsulot nomi bilan salomlashadi
-    if (link && user.phone) await ctx.reply(await ctx.t("link_welcome", { ism: firstName(user), mahsulot: product.title }), { parse_mode: "HTML" });
+    if (link && user.phone) await ctx.reply(await ctx.t("link_welcome", { ism: firstName(user), mahsulot: await displayCourseName(product.title) }), { parse_mode: "HTML" });
     return presentProduct(ctx, product);
   }
   // Noto'g'ri, o'chirilgan yoki eskirgan havola — tushuntirish va umumiy katalog
-  if (entry.kind === "unavailable") await ctx.reply(await ctx.t("link_unavailable"));
+  if (entry.kind === "unavailable") await ctx.reply(await ctx.t("link_unavailable"), { parse_mode: "HTML" });
 
   if (!user.phone) {
     await prisma.user.update({ where: { id: user.id }, data: { lastProduct: null } });
@@ -151,11 +152,11 @@ pm.on("message:contact", async (ctx) => {
 
   // Profildan raqamni yangilash
   if (hadPhone) {
-    await ctx.reply(await ctx.t("phone_updated"), { reply_markup: mainMenu(ctx.lang, ctx.role) });
+    await ctx.reply(await ctx.t("phone_updated"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
     await render(ctx, await profileScreen(ctx));
     return;
   }
-  await ctx.reply(await ctx.t("phone_saved"), { reply_markup: mainMenu(ctx.lang, ctx.role) });
+  await ctx.reply(await ctx.t("phone_saved"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
   const product = await getActiveProduct(user.lastProduct);
   if (product) await presentProduct(ctx, product);
   else await showCatalog(ctx);
@@ -221,7 +222,7 @@ pm.callbackQuery(/^l:(\d{1,9})$/, async (ctx) => {
   } catch (err) {
     if (isBlockedError(err)) return markBlocked(BigInt(ctx.from.id));
     if (isUnavailableFileError(err)) {
-      await ctx.reply(await ctx.t("lesson_unavailable"), { reply_markup: contactAdminKeyboard(ctx.lang) });
+      await ctx.reply(await ctx.t("lesson_unavailable"), { parse_mode: "HTML", reply_markup: await contactAdminKeyboard(ctx.lang) });
       return;
     }
     throw err; // errorBoundary: log + foydalanuvchiga umumiy xabar
@@ -244,7 +245,7 @@ pm.callbackQuery(/^buy:([\w-]{1,32})$/, async (ctx) => {
 
   const res = await createOrder(user.id, product, user.lastSource);
   if (res.kind === "no_card" || res.kind === "no_price") {
-    await ctx.reply(await ctx.t("payment_unavailable"), { reply_markup: contactAdminKeyboard(ctx.lang) });
+    await ctx.reply(await ctx.t("payment_unavailable"), { parse_mode: "HTML", reply_markup: await contactAdminKeyboard(ctx.lang) });
     return;
   }
   if (res.kind === "created") {
@@ -290,19 +291,26 @@ pm.callbackQuery(new RegExp(`^link:${ID_RE}$`), async (ctx) => {
   await ctx.answerCallbackQuery({ text: await ctx.t("link_loading") });
   const grant = await refreshInviteLink(ctx.api, BigInt(ctx.match[1]), BigInt(ctx.from.id));
   if (!grant?.inviteLink) {
-    await ctx.reply(await ctx.t("link_failed"), { reply_markup: contactAdminKeyboard(ctx.lang) });
+    await ctx.reply(await ctx.t("link_failed"), { parse_mode: "HTML", reply_markup: await contactAdminKeyboard(ctx.lang) });
     return;
   }
-  await ctx.reply(await ctx.t("link_refreshed"), {
-    reply_markup: new InlineKeyboard().url(ctx.label("btn_join", { mahsulot: grant.product.title }), grant.inviteLink),
+  await ctx.reply(await ctx.t("link_refreshed"), { parse_mode: "HTML",
+    reply_markup: new InlineKeyboard().url(ctx.label("btn_join", { mahsulot: await displayCourseName(grant.product.title) }), grant.inviteLink),
   });
 });
 
 pm.callbackQuery(CB.resend, async (ctx) => {
-  await ctx.reply(await ctx.t("resend_hint"));
+  await ctx.reply(await ctx.t("resend_hint"), { parse_mode: "HTML" });
 });
 
 pm.callbackQuery(CB.contact, async (ctx) => {
-  const kontakt = config.SUPPORT_USERNAME ? `@${config.SUPPORT_USERNAME}` : await ctx.t("contact_admin_fallback");
-  await ctx.reply(await ctx.t("contact_admin_hint", { kontakt }));
+  const url = await getSupportUrl();
+  if (!url) {
+    await ctx.reply(await ctx.t("support_not_configured"), { parse_mode: "HTML" });
+    return;
+  }
+  await ctx.reply(await ctx.t("contact_admin_hint", { kontakt: `@${url.slice("https://t.me/".length)}` }), {
+    parse_mode: "HTML",
+    reply_markup: new InlineKeyboard().url(ctx.label("btn_contact_admin"), url),
+  });
 });

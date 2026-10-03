@@ -9,7 +9,7 @@ import { approveOrder, getOrderFull, rejectOrder, transition, type ReviewerRef }
 import { KickFailedError, revokeGrant } from "../../services/membership";
 import { grantAccess } from "../../services/access";
 import { trackEvent } from "../../services/events";
-import { getSettings } from "../../services/settings";
+import { displayCourseName, getSettings } from "../../services/settings";
 import { REJECT_REASONS, type RejectReasonCode } from "../../services/texts";
 import { label, translate } from "../../i18n";
 import { displayName, userLang } from "../../services/users";
@@ -77,7 +77,7 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
   let sent = null;
   try {
     const kb = new InlineKeyboard();
-    for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: g.product.title }), g.inviteLink!).row();
+    for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: await displayCourseName(g.product.title) }), g.inviteLink!).row();
     // Kurs sahifasi: darslar va kanal havolasi (to'plam bo'lsa — tarkibidagi kurslar)
     kb.text(label(lang, "btn_start_course"), `p:${order.product.code}`);
     const text = withLinks.length > 0 ? await translate(lang, "approved", { kun: settings.invite_link_days }) : await translate(lang, "approved_no_link");
@@ -129,7 +129,7 @@ export async function rejectAndNotify(
   });
   const kb = new InlineKeyboard();
   if (reason.resend && order.attempts < settings.max_receipt_attempts) kb.text(label(lang, "btn_resend"), "resend").row();
-  kb.add(contactAdminKeyboard(lang).inline_keyboard[0][0]);
+  kb.add((await contactAdminKeyboard(lang)).inline_keyboard[0][0]);
 
   const sent = await notifyUser(api, order.user, "warning", await translate(lang, "rejected", {}, { sabab: customerText }), { reply_markup: kb }).catch((err) => {
     logger.error({ err, orderId: orderId.toString() }, "rad etish xabari mijozga yuborilmadi");
@@ -192,8 +192,8 @@ export async function cancelAndNotify(api: Api, orderId: bigint, by: { panelUser
   if (!order.user.isBanned) {
     const lang = await userLang(order.user);
     const sabab = reason ? await translate(lang, "order_cancel_reason", { sabab: reason }) : "";
-    const text = await translate(lang, paid ? "order_refunded_by_admin" : "order_cancelled_by_admin", { raqam: orderId.toString(), mahsulot: order.product.title }, { sabab });
-    await notifyUser(api, order.user, "order", text, { reply_markup: contactAdminKeyboard(lang) }).catch((err) =>
+    const text = await translate(lang, paid ? "order_refunded_by_admin" : "order_cancelled_by_admin", { raqam: orderId.toString(), mahsulot: await displayCourseName(order.product.title) }, { sabab });
+    await notifyUser(api, order.user, "order", text, { reply_markup: await contactAdminKeyboard(lang) }).catch((err) =>
       logger.warn({ err, orderId: orderId.toString() }, "bekor qilish xabari yuborilmadi"),
     );
   }

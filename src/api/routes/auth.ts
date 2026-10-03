@@ -1,10 +1,12 @@
-import { Router } from "express";
+import { Router, type Request, type RequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../../db";
 import { hashPassword, toSafe, verifyCredentials } from "../../services/panelUsers";
 import { logActivity } from "../../services/activity";
+import { OTP_TTL_MINUTES, requestPasswordReset, revokeOtps, verifyPasswordResetOtp } from "../../services/adminOtp";
+import { logger } from "../../lib/logger";
 import { currentUser, requireAuth, signToken } from "../auth";
 import { HttpError } from "../errors";
 import { clientIp, parseBody } from "../validate";
@@ -69,18 +71,75 @@ authRouter.put("/profile", requireAuth, async (req, res) => {
   res.json({ user: toSafe(updated) });
 });
 
-authRouter.put("/password", requireAuth, async (req, res) => {
-  const body = parseBody(
-    z.object({ currentPassword: z.string().min(1), newPassword: z.string().min(8).max(200) }),
-    req,
-  );
+// ---------- Parolni almashtirish ----------
+// Harf va raqam bo'lishi shart; uzunlik bcrypt chegarasidan oshmaydi
+const newPasswordSchema = z
+  .string()
+  .min(8, "Parol kamida 8 belgidan iborat bo'lishi kerak")
+  .max(200)
+  .refine((p) => /\p{L}/u.test(p) && /\d/.test(p), "Parolda kamida bitta harf va bitta raqam bo'lishi kerak");
+
+/**
+ * Oddiy holatda joriy parol tekshiriladi. "Parolni unutdim" (OTP) orqali kirilgan bo'lsa —
+ * faqat yangi parol. Saqlangach boshqa barcha sessiyalar bekor bo'ladi (token parol barmoq izini
+ * saqlaydi), shu qurilma esa yangi token bilan davom etadi.
+ */
+const changePassword: RequestHandler = async (req, res) => {
+  const body = parseBody(z.object({ currentPassword: z.string().max(200).optional(), newPassword: newPasswordSchema }), req);
   const me = currentUser(req);
   const full = await prisma.panelUser.findUniqueOrThrow({ where: { id: me.id } });
-  if (!(await bcrypt.compare(body.currentPassword, full.passwordHash))) {
-    throw new HttpError(400, "Joriy parol noto'g'ri");
+  if (!full.mustChangePassword) {
+    if (!body.currentPassword) throw new HttpError(400, "Joriy parolni kiriting");
+    if (!(await bcrypt.compare(body.currentPassword, full.passwordHash))) throw new HttpError(400, "Joriy parol noto'g'ri");
   }
-  const updated = await prisma.panelUser.update({ where: { id: me.id }, data: { passwordHash: await hashPassword(body.newPassword) } });
-  await logActivity(me.id, "CHANGE_PASSWORD", "Parol o'zgartirildi", clientIp(req));
-  // Boshqa qurilmalardagi sessiyalar bekor bo'ladi; shu qurilma yangi token bilan davom etadi
-  res.json({ ok: true, token: signToken(updated) });
+  const updated = await prisma.panelUser.update({
+    where: { id: me.id },
+    data: { passwordHash: await hashPassword(body.newPassword), mustChangePassword: false },
+  });
+  await revokeOtps(me.id);
+  await logActivity(me.id, "CHANGE_PASSWORD", full.mustChangePassword ? "Parol o'zgartirildi (kod orqali kirgandan keyin)" : "Parol o'zgartirildi", clientIp(req));
+  res.json({ ok: true, token: signToken(updated), user: toSafe(updated) });
+};
+authRouter.put("/password", requireAuth, changePassword);
+authRouter.patch("/password", requireAuth, changePassword);
+
+// ---------- Parolni unutdim: email orqali bir martalik kod ----------
+const FORGOT_MESSAGE = "Agar email ro'yxatdan o'tgan bo'lsa, kod yuborildi";
+const emailKey = (prefix: string) => (req: Request) => {
+  const body: unknown = req.body;
+  const email = typeof body === "object" && body !== null && "email" in body && typeof body.email === "string" ? body.email : "";
+  return `${prefix}:${email.trim().toLowerCase().slice(0, 200)}`;
+};
+const limiter = (windowMs: number, limit: number, error: string, keyGenerator?: (req: Request) => string) =>
+  rateLimit({ windowMs, limit, standardHeaders: "draft-7", legacyHeaders: false, keyGenerator, message: { error, code: "rate_limited", details: { code: "rate_limited" } } });
+
+// Limitlar email bor-yo'qligidan qat'i nazar bir xil ishlaydi — javob orqali hech narsa oshkor bo'lmaydi
+const forgotIpLimiter = limiter(15 * 60_000, 10, "Juda ko'p so'rov. 15 daqiqadan keyin qayta urinib ko'ring.");
+const forgotEmailMinuteLimiter = limiter(60_000, 1, "Kodni qayta so'rash uchun 60 soniya kuting.", emailKey("forgot-1m"));
+const forgotEmailHourLimiter = limiter(60 * 60_000, 5, "Bu email uchun soatiga 5 tadan ko'p kod so'rab bo'lmaydi. Keyinroq urinib ko'ring.", emailKey("forgot-1h"));
+const verifyIpLimiter = limiter(15 * 60_000, 30, "Juda ko'p urinish. 15 daqiqadan keyin qayta urinib ko'ring.");
+
+const emailSchema = z.string().trim().email("Email noto'g'ri").max(200);
+
+authRouter.post("/forgot-password", forgotIpLimiter, forgotEmailHourLimiter, forgotEmailMinuteLimiter, async (req, res) => {
+  const { email } = parseBody(z.object({ email: emailSchema }), req);
+  // Javob darhol va har doim bir xil: kod yaratish va xat yuborish fonda — javob vaqtidan ham
+  // email ro'yxatda bor-yo'qligini bilib bo'lmaydi
+  void requestPasswordReset(email, clientIp(req)).catch((err: unknown) => logger.error({ err }, "parol tiklash kodi yaratilmadi"));
+  res.json({ ok: true, message: FORGOT_MESSAGE, resendAfterSeconds: 60, ttlMinutes: OTP_TTL_MINUTES });
+});
+
+authRouter.post("/verify-otp", verifyIpLimiter, async (req, res) => {
+  const { email, code } = parseBody(z.object({ email: emailSchema, code: z.string().trim().regex(/^\d{6}$/, "Kod 6 ta raqamdan iborat") }), req);
+  const result = await verifyPasswordResetOtp(email, code, clientIp(req));
+  if (!result.ok) {
+    throw new HttpError(
+      400,
+      result.remainingAttempts > 0
+        ? `Kod noto'g'ri. Qolgan urinishlar: ${result.remainingAttempts}`
+        : "Kod noto'g'ri, muddati o'tgan yoki bloklangan. Yangi kod so'rang",
+      { code: "OTP_INVALID", remainingAttempts: result.remainingAttempts },
+    );
+  }
+  res.json({ token: signToken(result.admin), user: toSafe(result.admin), mustChangePassword: true });
 });

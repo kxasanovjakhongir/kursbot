@@ -6,6 +6,8 @@ import { createBot } from "../src/bot/bot";
 import type { BotContext } from "../src/bot/context";
 import { addCard } from "../src/services/cards";
 import { invalidateSettings, setSetting } from "../src/services/settings";
+import { installSupportButtonTracker, syncSupportButtons } from "../src/services/supportButtons";
+import { saveEditableTexts } from "../src/services/texts";
 import { invalidateTexts } from "../src/i18n";
 import { uz } from "../src/i18n/locales/uz";
 import { ru } from "../src/i18n/locales/ru";
@@ -138,7 +140,7 @@ const hasButton = (c: Call, data: string) => buttons(c).some((b) => b.callback_d
 
 async function reset() {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE notifications, broadcast_recipients, broadcasts, events, audit_log, messages, reminders, access_grants, receipts, orders, promo_codes, cards, products, admins, settings, texts, users RESTART IDENTITY CASCADE`,
+    `TRUNCATE support_button_messages, notifications, broadcast_recipients, broadcasts, events, audit_log, messages, reminders, access_grants, receipts, orders, promo_codes, cards, products, admins, settings, texts, users RESTART IDENTITY CASCADE`,
   );
   invalidateSettings();
   invalidateTexts();
@@ -232,8 +234,13 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     expect(textOf(pay)).toContain("1 250 000 so'm");
     expect(buttons(pay).find((b) => b.copy_text)?.copy_text?.text).toBe("8600123412341234");
     const order = await prisma.order.findFirstOrThrow();
-    expect(hasButton(pay, `ord:cancel:${order.id}`)).toBe(true);
+    // To'lov ekranida "Buyurtmani bekor qilish" tugmasi yo'q
+    expect(hasButton(pay, `ord:cancel:${order.id}`)).toBe(false);
+    expect(buttons(pay).some((b) => b.text.includes("bekor"))).toBe(false);
+    // "Savol berish" tugmasi ham yo'q
+    expect(buttons(pay).some((b) => b.url)).toBe(false);
 
+    // Eski xabardagi tugma bosilsa — bekor qilish tasdiq bilan ishlaydi
     await send(callback(`ord:cancel:${order.id}`));
     expect(textOf(lastScreen())).toContain(`#${order.id}`);
     expect(hasButton(lastScreen(), `ord:cancel_ok:${order.id}`)).toBe(true);
@@ -321,6 +328,108 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     await send(text("/start"), text(uz.menu_products));
     expect(sent()).toHaveLength(1);
     expect(textOf(sent()[0])).toBe(uz.error_banned);
+  });
+
+  it("Yordam: inline tugma bir bosishda bazadagi username'ga, eski xabarlar ham yangilanadi", async () => {
+    // Soxta Telegram transformeri createBot dagilardan tashqarida (ichkarisini chaqirmaydi) —
+    // tracker uning ustiga qo'yiladi, shunda haqiqiy ishlashdagidek har bir javobni ko'radi
+    installSupportButtonTracker(bot.api);
+    await send(text("/start"), contact("+998901234567"));
+    const urls = (c = lastScreen()) => buttons(c).flatMap((b) => (b.url ? [b.url] : []));
+    const helpUrls = async () => {
+      calls = [];
+      await send(text(uz.menu_help));
+      return urls();
+    };
+    const tracked = async () => {
+      await new Promise((r) => setTimeout(r, 50)); // tracker yozuvi fonda
+      return prisma.supportButtonMessage.findMany({ orderBy: { messageId: "asc" } });
+    };
+
+    await setSetting("support_username", "support");
+    expect(await helpUrls()).toEqual(["https://t.me/support"]);
+    for (const name of ["new_support", "other_support", "new_support"]) {
+      await setSetting("support_username", name);
+      expect(await helpUrls()).toEqual([`https://t.me/${name}`]);
+    }
+
+    // Katalog va bosh menyudagi "Yordam" — URL tugma (to'g'ridan-to'g'ri profilga)
+    calls = [];
+    await send(text(uz.menu_products));
+    const catalog = lastScreen();
+    expect(buttons(catalog).find((b) => b.text === uz.menu_help)?.url).toBe("https://t.me/new_support");
+    await send(text("/menu"));
+    expect(buttons(lastScreen()).find((b) => b.text === uz.menu_help)?.url).toBe("https://t.me/new_support");
+
+    // Username o'zgardi — fon vazifasi eski xabarlardagi tugmalarni yangisiga almashtiradi
+    const before = await tracked();
+    expect(before.length).toBeGreaterThan(0);
+    // Har xil paytda yuborilgan xabarlar — har biri o'sha paytdagi username bilan
+    expect(before.map((m) => m.url)).toEqual(expect.arrayContaining(["https://t.me/support", "https://t.me/other_support", "https://t.me/new_support"]));
+    await setSetting("support_username", "latest_support");
+    calls = [];
+    const n = await syncSupportButtons(bot.api);
+    const edits = calls.filter((c) => c.method === "editMessageReplyMarkup");
+    expect(n).toBe(before.length);
+    expect(edits).toHaveLength(n);
+    for (const e of edits) {
+      expect(JSON.stringify(e.payload.reply_markup)).toContain("https://t.me/latest_support");
+      expect(JSON.stringify(e.payload.reply_markup)).not.toContain("https://t.me/new_support");
+    }
+    // Boshqa tugmalar (kurslar, navigatsiya) saqlanadi
+    expect(Math.max(...edits.map((e) => buttons(e).length))).toBeGreaterThan(1);
+    const after = await tracked();
+    expect(after).toHaveLength(before.length);
+    expect(after.every((m) => m.url === "https://t.me/latest_support")).toBe(true);
+    expect(await syncSupportButtons(bot.api)).toBe(0);
+
+    // Sozlanmagan: yaroqsiz havola yasalmaydi, eski tugmalar yordam ekraniga o'tadi
+    await setSetting("support_username", null);
+    calls = [];
+    await syncSupportButtons(bot.api);
+    expect(JSON.stringify(calls)).not.toMatch(/t\.me\/(undefined|null|latest_support)/);
+    expect(await tracked()).toEqual([]);
+    expect(await helpUrls()).toEqual([]);
+    expect(textOf(lastScreen())).toContain(uz.support_not_configured);
+    await send(text(uz.menu_products));
+    expect(buttons(lastScreen()).find((b) => b.text === uz.menu_help)).toMatchObject({ callback_data: "nav:help" });
+    calls = [];
+    await send(callback("contact"));
+    expect(textOf(lastScreen())).toBe(uz.support_not_configured);
+  });
+
+  it("Yordam: username ham, panel matni ham bo'sh — standart matn + «sozlanmagan» ogohlantirishi", async () => {
+    await send(text("/start"), contact("+998901234567"));
+    calls = [];
+    await send(text(uz.menu_help));
+    expect(textOf(lastScreen())).toBe(`${uz.help}\n\n${uz.support_not_configured}`);
+    expect(buttons(lastScreen()).some((b) => b.url)).toBe(false);
+
+    // Username bor — ogohlantirish yo'q, URL tugma bor
+    await setSetting("support_username", "my_support");
+    calls = [];
+    await send(text(uz.menu_help));
+    expect(textOf(lastScreen())).toBe(uz.help);
+    expect(buttons(lastScreen()).find((b) => b.url)?.url).toBe("https://t.me/my_support");
+  });
+
+  it("Yordam xabari va popup matnlari paneldan tahrirlanadi", async () => {
+    await send(text("/start"), contact("+998901234567"));
+    // Username sozlanmagan bo'lsa ham admin yozgan matn o'zgarishsiz chiqadi
+    await setSetting("support_username", null);
+    await saveEditableTexts("uz", { help: "📞 <b>Yangi yordam</b> matni", error_stale_button: "Eski tugma, qayta tanlang" });
+    calls = [];
+    await send(text(uz.menu_help));
+    expect(textOf(lastScreen())).toBe("📞 <b>Yangi yordam</b> matni");
+    expect(lastScreen().payload.parse_mode).toBe("HTML");
+    calls = [];
+    await send(callback("eski:tugma"));
+    expect(answers().at(-1)?.payload.text).toBe("Eski tugma, qayta tanlang");
+    // Oddiy javoblar ham HTML bilan yuboriladi (formatlash ishlaydi)
+    await saveEditableTexts("uz", { error_unknown_command: "🤔 <b>Noma'lum</b> buyruq" });
+    calls = [];
+    await send(text("/nimadir"));
+    expect(lastScreen().payload).toMatchObject({ text: "🤔 <b>Noma'lum</b> buyruq", parse_mode: "HTML" });
   });
 
   it("maintenance: foydalanuvchi to'xtatiladi, admin ishlaydi", async () => {

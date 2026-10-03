@@ -6,7 +6,7 @@
 # Tartib: checkout → build (versiya tegi bilan) → backup → migratsiya → app almashtirish → /ready → smoke.
 # /ready 90 soniyada kelmasa — avtomatik oldingi versiyaga qaytadi (deploy/rollback.sh).
 source "$(dirname "$0")/lib.sh"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 [[ -f "$ENV_FILE" ]] || die "$ENV_FILE yo'q (cp .env.production.example .env.production)"
 
 STATE="$ROOT/.deploy"

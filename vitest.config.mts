@@ -11,7 +11,17 @@ export default defineConfig({
       LOG_LEVEL: "silent",
       PUBLIC_URL: "https://app.example.uz",
       METRICS_TOKEN: "test-metrics-token-0123456789",
+      // Lokal .env dagi qiymatlar testlarga tushmasin (dotenv mavjud qiymatni almashtirmaydi):
+      // testlar CI'dagidek .env siz ham bir xil ishlaydi
+      SUPPORT_USERNAME: "",
+      SMTP_HOST: "",
+      SMTP_USER: "",
+      SMTP_PASS: "",
+      MAIL_FROM: "",
+      CRM_WEBHOOK_URL: "",
     },
+    // nodemailer har bir testda mock — real SMTP serverga ulanish imkonsiz
+    setupFiles: ["tests/setup.ts"],
     fileParallelism: false,
   },
 });

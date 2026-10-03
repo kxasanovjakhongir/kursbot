@@ -20,12 +20,12 @@ export async function accessGuard(ctx: BotContext, next: NextFunction): Promise<
     bannedNotified.set(id, true);
     const text = await ctx.t("error_banned");
     if (ctx.callbackQuery) await ctx.answerCallbackQuery({ text, show_alert: true }).catch(() => undefined);
-    else if (first) await ctx.reply(text);
+    else if (first) await ctx.reply(text, { parse_mode: "HTML" });
     return;
   }
 
   const { maintenance_mode } = await getSettings();
   if (!maintenance_mode) return next();
   if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => undefined);
-  await ctx.reply(await ctx.t("maintenance"));
+  await ctx.reply(await ctx.t("maintenance"), { parse_mode: "HTML" });
 }

@@ -102,6 +102,83 @@ describe.skipIf(!enabled)("admin API", () => {
     expect(blocked.body.total).toBe(1);
   });
 
+  it("support username: faqat super admin o'zgartiradi, normalizatsiya va validatsiya", async () => {
+    const auth = { Authorization: `Bearer ${superToken}` };
+    const stored = async () => (await prisma.setting.findUnique({ where: { key: "support_username" } }))?.value;
+    // Ruxsatsiz: tokensiz — 401, ADMIN roli — 403, baza o'zgarmaydi
+    expect((await request(app).put("/api/bot/settings").send({ supportUsername: "hacker_x" })).status).toBe(401);
+    const forbidden = await request(app).put("/api/bot/settings").set("Authorization", `Bearer ${adminToken}`).send({ supportUsername: "hacker_x" });
+    expect(forbidden.status).toBe(403);
+    expect(await stored()).not.toBe("hacker_x");
+
+    for (const [input, expected] of [
+      ["@new_support", "new_support"],
+      ["new_support2", "new_support2"],
+      ["https://t.me/new_support3", "new_support3"],
+    ] as const) {
+      expect((await request(app).put("/api/bot/settings").set(auth).send({ supportUsername: input })).status).toBe(200);
+      expect(await stored()).toBe(expected);
+      expect((await request(app).get("/api/bot/settings").set(auth)).body.supportUsername).toBe(expected);
+    }
+
+    const bad = await request(app).put("/api/bot/settings").set(auth).send({ supportUsername: "@new support" });
+    expect(bad.status).toBe(400);
+    expect(JSON.stringify(bad.body)).toContain("Telegram username noto'g'ri formatda.");
+    expect(await stored()).toBe("new_support3");
+
+    // Bo'sh qiymat — sozlama tozalanadi
+    expect((await request(app).put("/api/bot/settings").set(auth).send({ supportUsername: "" })).status).toBe(200);
+    expect((await request(app).get("/api/bot/settings").set(auth)).body.supportUsername).toBe("");
+  });
+
+  it("bot matnlari va kurs nomi limiti: faqat super admin, validatsiya, standartga qaytarish", async () => {
+    const auth = { Authorization: `Bearer ${superToken}` };
+    expect((await request(app).get("/api/bot/texts")).status).toBe(401);
+    expect((await request(app).get("/api/bot/texts").set("Authorization", `Bearer ${adminToken}`)).status).toBe(403);
+    expect((await request(app).put("/api/bot/texts").set("Authorization", `Bearer ${adminToken}`).send({ lang: "uz", values: {} })).status).toBe(403);
+
+    const initial = await request(app).get("/api/bot/texts?lang=uz").set(auth);
+    type Item = { key: string; value: string; default: string; group: string; vars: string[]; overridden: boolean };
+    const item = (body: { items: Item[] }, key: string) => body.items.find((i) => i.key === key)!;
+    expect(item(initial.body, "payment_expires").value).toBe("⏳ Buyurtma {expires_at} gacha amal qiladi.");
+    expect(item(initial.body, "help").group).toBe("help");
+    // Tugma yozuvlari ro'yxatda yo'q (ular faqat koddan o'zgaradi)
+    expect(initial.body.items.some((i: Item) => i.key.startsWith("btn_") || i.key.startsWith("menu_"))).toBe(false);
+
+    const ok = await request(app)
+      .put("/api/bot/texts")
+      .set(auth)
+      .send({
+        lang: "uz",
+        values: {
+          intro_video_text: "{mahsulot}: yangi matn 👇",
+          payment_step_1: "1️⃣ {summa} ni {karta} ga o'tkazing ({mahsulot}, #{raqam}, {karta_egasi}).",
+          payment_expires: "⏳ {expires_at} gacha",
+        },
+      });
+    expect(ok.status).toBe(200);
+    expect(item(ok.body, "intro_video_text")).toMatchObject({ value: "{mahsulot}: yangi matn 👇", overridden: true });
+    // Kod uzatadigan, lekin standart matnda yo'q o'zgaruvchilar ham ruxsat etilgan
+    expect(item(ok.body, "payment_step_1").vars).toEqual(expect.arrayContaining(["summa", "karta", "mahsulot", "raqam", "karta_egasi"]));
+    expect(await prisma.text.findUnique({ where: { key_lang: { key: "payment_expires", lang: "uz" } } })).toMatchObject({ body: "⏳ {expires_at} gacha" });
+
+    for (const values of [{ payment_expires: "⏳ 06.10.2026 06:41 gacha" }, { payment_step_1: "" }, { payment_step_2: "<b>yopilmagan" }, { boshqa_kalit: "x" }, { btn_buy: "x" }, { help: "{noma_lum}" }, { error_stale_button: "<b>x</b>" }]) {
+      expect((await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", values })).status).toBe(400);
+    }
+    expect((await request(app).put("/api/bot/texts").set(auth).send({ lang: "de", values: {} })).status).toBe(400);
+
+    // Standart matn saqlansa — override o'chiriladi
+    await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", values: { payment_expires: item(initial.body, "payment_expires").default } });
+    expect(await prisma.text.findUnique({ where: { key_lang: { key: "payment_expires", lang: "uz" } } })).toBeNull();
+
+    for (const bad of [0, -1, 101, 7.5, "7"]) {
+      expect((await request(app).put("/api/bot/settings").set(auth).send({ courseNameMaxLength: bad })).status).toBe(400);
+    }
+    expect((await request(app).put("/api/bot/settings").set(auth).send({ courseNameMaxLength: 7 })).status).toBe(200);
+    expect((await request(app).get("/api/bot/settings").set(auth)).body.courseNameMaxLength).toBe(7);
+    await prisma.text.deleteMany();
+  });
+
   it("buyruq validatsiyasi va tizim buyruqlari himoyasi", async () => {
     const auth = { Authorization: `Bearer ${adminToken}` };
     expect((await request(app).post("/api/bot/commands").set(auth).send({ command: "start", response: "x" })).status).toBe(400);
@@ -198,7 +275,7 @@ describe.skipIf(!enabled)("admin API", () => {
   it("oxirgi super adminni o'chirib bo'lmaydi; harakatlar loglanadi", async () => {
     const auth = { Authorization: `Bearer ${superToken}` };
     expect((await request(app).delete("/api/admins/1").set(auth)).status).toBe(400);
-    const logs = await request(app).get("/api/activity-logs").set(auth);
+    const logs = await request(app).get("/api/activity-logs?pageSize=100").set(auth);
     const actions = logs.body.items.map((l: { action: string }) => l.action);
     expect(actions).toEqual(expect.arrayContaining(["LOGIN", "LOGIN_FAILED", "CREATE_BROADCAST"]));
   });

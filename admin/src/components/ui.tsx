@@ -1,4 +1,4 @@
-import { useEffect, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useEffect, type ButtonHTMLAttributes, type ComponentProps, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Inbox, Loader2, RefreshCw, X } from "lucide-react";
 
 // ---------- Tugma ----------
@@ -145,7 +145,7 @@ export function Field({ label, hint, error, children }: { label: string; hint?: 
 }
 
 export const Input = ({ className = "", ...p }: InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={`${fieldCls} ${className}`} />;
-export const Textarea = ({ className = "", ...p }: TextareaHTMLAttributes<HTMLTextAreaElement>) => (
+export const Textarea = ({ className = "", ...p }: ComponentProps<"textarea">) => (
   <textarea {...p} className={`${fieldCls} ${className}`} />
 );
 export const Select = ({ className = "", ...p }: SelectHTMLAttributes<HTMLSelectElement>) => <select {...p} className={`${fieldCls} ${className}`} />;

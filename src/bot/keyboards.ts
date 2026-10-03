@@ -1,8 +1,8 @@
 import { InlineKeyboard, Keyboard } from "grammy";
 import type { Product } from "@prisma/client";
-import { config } from "../config";
 import { label, type Lang } from "../i18n";
 import { can, type Role } from "../services/permissions";
+import { getSupportUrl } from "../services/settings";
 import { CB } from "./ui/callbacks";
 
 /**
@@ -23,24 +23,27 @@ export function phoneKeyboard(lang: Lang, withCancel = false): Keyboard {
   return kb.resized().oneTime();
 }
 
-export function productListKeyboard(products: Product[], prefix = "p"): InlineKeyboard {
+/** name — kurs nomi formatlovchisi (courseNameFormatter) */
+export function productListKeyboard(products: Product[], name: (title: string) => string, prefix = "p"): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const p of products) kb.text(p.title, `${prefix}:${p.code}`).row();
+  for (const p of products) kb.text(name(p.title), `${prefix}:${p.code}`).row();
   return kb;
 }
 
-function supportUrl(): string | null {
-  return config.SUPPORT_USERNAME ? `https://t.me/${config.SUPPORT_USERNAME}` : null;
+/*
+ * Support tugmalari — to'g'ridan-to'g'ri t.me profiliga URL. Username paneldan o'zgartirilsa, avval
+ * yuborilgan xabarlardagi tugmalar ham fonda yangilanadi (services/supportButtons.ts).
+ */
+
+/** "💬 Yordam" — bir bosishda support profiliga; sozlanmagan bo'lsa yordam ekraniga */
+export async function withHelpButton(kb: InlineKeyboard, lang: Lang): Promise<InlineKeyboard> {
+  const url = await getSupportUrl();
+  const text = label(lang, "menu_help");
+  return url ? kb.url(text, url) : kb.text(text, CB.help);
 }
 
-/** 2-bosqichda "Savol berish" bot ichidagi support yozishmaga ulanadi (TZ 7.4) */
-export function withAskButton(kb: InlineKeyboard, lang: Lang): InlineKeyboard {
-  const url = supportUrl();
-  return url ? kb.url(label(lang, "btn_ask"), url) : kb;
-}
-
-export function contactAdminKeyboard(lang: Lang): InlineKeyboard {
-  const url = supportUrl();
+export async function contactAdminKeyboard(lang: Lang): Promise<InlineKeyboard> {
+  const url = await getSupportUrl();
   const text = label(lang, "btn_contact_admin");
   return url ? new InlineKeyboard().url(text, url) : new InlineKeyboard().text(text, CB.contact);
 }

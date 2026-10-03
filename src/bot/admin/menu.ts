@@ -43,7 +43,7 @@ adminMenu
 // Oddiy foydalanuvchi "🛠 Admin panel" ni qo'lda yozsa yoki /admin buyrug'ini yuborsa — aniq rad javobi
 const denied = adminMenu.chatType("private").filter((ctx) => !can(ctx.role, "orders.review"));
 const deny = async (ctx: BotContext) => {
-  await ctx.reply(await ctx.t("adm_no_permission"));
+  await ctx.reply(await ctx.t("adm_no_permission"), { parse_mode: "HTML" });
 };
 denied.hears(allLabels("menu_admin"), deny);
 denied.command("admin", deny);

@@ -52,3 +52,15 @@ export const AUDIENCE_LABEL: Record<Audience, string> = {
   admins: "Telegram adminlari",
   specific: "Tanlangan foydalanuvchilar",
 };
+
+/**
+ * Telegram username (backend dagi normalizeTelegramUsername bilan bir xil qoida):
+ * "@support", "support", "https://t.me/support" → "support"; yaroqsiz bo'lsa null.
+ */
+export function normalizeTelegramUsername(raw: string): string | null {
+  const s = raw
+    .trim()
+    .replace(/^(?:https?:\/\/)?(?:www\.)?(?:t\.me|telegram\.me)\//i, "")
+    .replace(/^@/, "");
+  return /^[a-zA-Z](?:[a-zA-Z0-9]|_(?!_)){3,30}[a-zA-Z0-9]$/.test(s) ? s : null;
+}

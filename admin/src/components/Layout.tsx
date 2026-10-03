@@ -15,6 +15,7 @@ import {
   LogOut,
   Menu as MenuIcon,
   MessageSquare,
+  MessageSquareText,
   Megaphone,
   ScrollText,
   Settings,
@@ -59,13 +60,15 @@ const NAV: NavItem[] = [
   { to: "/activity-logs", label: "Faoliyat loglari", icon: ScrollText, superOnly: true },
   { to: "/errors", label: "Xatoliklar", icon: ShieldAlert, superOnly: true, badge: "errors" },
   { to: "/bot/settings", label: "Bot sozlamalari", icon: Settings, superOnly: true },
+  { to: "/bot/texts", label: "Bot matnlari", icon: MessageSquareText, superOnly: true },
   { to: "/profile", label: "Profil", icon: UserCircle },
 ];
 
 function NavList({ collapsed, onNavigate }: { collapsed: boolean; onNavigate?: () => void }) {
-  const { isSuper, logout } = useAuth();
+  const { isSuper, logout, user } = useAuth();
   const { count: pendingCount, errorsCount } = usePending();
-  const items = NAV.filter((i) => !i.superOnly || isSuper);
+  // Yangi parol o'rnatilmaguncha faqat profil sahifasi
+  const items = user?.mustChangePassword ? NAV.filter((i) => i.to === "/profile") : NAV.filter((i) => !i.superOnly || isSuper);
   const cls = ({ isActive }: { isActive: boolean }) =>
     `group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
       isActive ? "bg-sidebar-active text-white" : "text-blue-100/80 hover:bg-sidebar-hover hover:text-white"
@@ -164,6 +167,15 @@ export function Layout() {
         </header>
         <main className="flex-1 overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
+            {user?.mustChangePassword && (
+              <div role="alert" className="mb-6 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0" />
+                <div>
+                  <p className="font-semibold">Xavfsizlik uchun yangi parol o'rnating</p>
+                  <p>Siz emailga yuborilgan kod orqali kirdingiz. Yangi parol saqlanmaguncha panelning boshqa bo'limlari yopiq.</p>
+                </div>
+              </div>
+            )}
             <Outlet />
           </div>
         </main>

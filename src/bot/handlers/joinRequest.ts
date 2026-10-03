@@ -2,6 +2,7 @@ import { Composer, GrammyError } from "grammy";
 import type { BotContext } from "../context";
 import { notifyUser, sendToAdminGroup } from "../notify";
 import { escapeHtml } from "../../lib/format";
+import { displayCourseName } from "../../services/settings";
 import { logger } from "../../lib/logger";
 import { decideJoinRequest } from "../../services/access";
 import { trackEvent } from "../../services/events";
@@ -47,7 +48,7 @@ joinRequest.on("chat_join_request", async (ctx) => {
     }
     await trackEvent(decision.grant.userId, "joined", { product: decision.grant.product.code });
     const { user, product: joined } = decision.grant;
-    const text = await translate(await userLang(user), "joined_welcome", { mahsulot: joined.title });
+    const text = await translate(await userLang(user), "joined_welcome", { mahsulot: await displayCourseName(joined.title) });
     await notifyUser(ctx.api, user, "success", text);
     // 2-bosqich: instrument fayllari shu yerda yuboriladi (TZ 5.9, BR-23)
     return;

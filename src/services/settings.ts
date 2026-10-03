@@ -1,5 +1,7 @@
 import { prisma } from "../db";
 import { config } from "../config";
+import { formatCourseName } from "../lib/format";
+import { normalizeTelegramUsername } from "../lib/telegramUsername";
 
 /** Standart qiymatlar (TZ 6-bo'lim, qavs ichidagilar). Super admin o'zgartira oladi. */
 export const DEFAULT_SETTINGS = {
@@ -18,6 +20,12 @@ export const DEFAULT_SETTINGS = {
   bot_token_enc: null as string | null,
   // Bot admin qilingan kanallar (yopiq kanal havolasini ID ga moslash uchun)
   known_channels: [] as { id: string; title: string; username?: string }[],
+  // "Yordam" tugmasi yo'naltiradigan Telegram username (@ siz). Paneldan o'zgartiriladi;
+  // bazada hali saqlanmagan bo'lsa .env dagi SUPPORT_USERNAME boshlang'ich qiymat bo'ladi
+  // Kurs nomining botda (xabar va tugmalarda) ko'rinadigan maksimal uzunligi. 100 — mahsulot nomining
+  // maksimal uzunligi, ya'ni standart holatda nom qisqartirilmaydi
+  course_name_max_length: 100,
+  support_username: (config.SUPPORT_USERNAME ? normalizeTelegramUsername(config.SUPPORT_USERNAME) : null) as string | null,
 };
 
 export type Settings = typeof DEFAULT_SETTINGS;
@@ -76,4 +84,25 @@ export async function getAdminGroupId(): Promise<bigint | undefined> {
   const s = await getSettings();
   if (s.admin_group_id) return BigInt(s.admin_group_id);
   return config.ADMIN_GROUP_ID;
+}
+
+/** "Yordam" havolasi: https://t.me/<username>. Sozlanmagan yoki yaroqsiz bo'lsa null */
+export async function getSupportUrl(): Promise<string | null> {
+  const raw = (await getSettings()).support_username;
+  const username = typeof raw === "string" ? normalizeTelegramUsername(raw) : null;
+  return username ? `https://t.me/${username}` : null;
+}
+
+export const COURSE_NAME_MAX_LENGTH_LIMIT = 100;
+
+/** Kurs nomini botda ko'rsatish uchun formatlovchi (joriy sozlama bilan). Ro'yxatlarda bir marta olinadi */
+export async function courseNameFormatter(): Promise<(name: string) => string> {
+  const raw = Number((await getSettings()).course_name_max_length);
+  const max = Number.isInteger(raw) && raw > 0 ? Math.min(raw, COURSE_NAME_MAX_LENGTH_LIMIT) : COURSE_NAME_MAX_LENGTH_LIMIT;
+  return (name) => formatCourseName(name, max);
+}
+
+/** Bitta kurs nomi — botdagi xabar yoki tugma uchun */
+export async function displayCourseName(name: string): Promise<string> {
+  return (await courseNameFormatter())(name);
 }

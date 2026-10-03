@@ -24,6 +24,8 @@ import { mainMenu, phoneKeyboard } from "./keyboards";
 import { homeScreen } from "./screens/home";
 import { render } from "./ui/render";
 import { installOutgoingLogger, logIncoming } from "./messageLog";
+import { installSupportButtonTracker } from "../services/supportButtons";
+import { stripHtml } from "../lib/format";
 import { listOpenOrders } from "../services/orders";
 import { telegramApiCalls } from "../lib/metrics";
 
@@ -52,6 +54,16 @@ export function createBot(token: string, options: CreateBotOptions = {}): Bot<Bo
   // Transformerlar tartibi: oxirgi o'rnatilgani tashqi. autoRetry har urinishni metrikadan o'tkazadi,
   // chiquvchi xabar logi esa faqat muvaffaqiyatli javobni bir marta yozadi
   installOutgoingLogger(bot.api);
+  installSupportButtonTracker(bot.api);
+  // Tugma bosilgandagi oyna (popup) formatlashni qo'llamaydi va 200 belgidan oshmaydi — paneldan
+  // tahrirlangan HTML matn ham toza ko'rinadi
+  bot.api.config.use((prev, method, payload, signal) => {
+    if (method === "answerCallbackQuery" && typeof (payload as { text?: unknown }).text === "string") {
+      const p = payload as { text: string };
+      p.text = Array.from(stripHtml(p.text)).slice(0, 200).join("");
+    }
+    return prev(method, payload, signal);
+  });
   bot.api.config.use(apiMetrics);
   // 429 (flood) — retry_after qadar kutib qayta; tarmoq/5xx xatolari — exponential backoff bilan
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60, rethrowInternalServerErrors: false }));
@@ -92,7 +104,7 @@ export function createBot(token: string, options: CreateBotOptions = {}): Bot<Bo
 
   pm.on("message:text", async (ctx) => {
     if (ctx.message.text.startsWith("/")) {
-      await ctx.reply(await ctx.t("error_unknown_command"), { reply_markup: mainMenu(ctx.lang, ctx.role) });
+      await ctx.reply(await ctx.t("error_unknown_command"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
       return;
     }
     const user = ctx.user!;
@@ -103,7 +115,7 @@ export function createBot(token: string, options: CreateBotOptions = {}): Bot<Bo
     }
     const open = await listOpenOrders(user.id);
     if (open.some((o) => o.status === "new" || o.status === "rejected")) {
-      await ctx.reply(await ctx.t("receipt_invalid"));
+      await ctx.reply(await ctx.t("receipt_invalid"), { parse_mode: "HTML" });
       return;
     }
     // 2-bosqich: "Savol berish" — support yozishma (TZ 7.4)

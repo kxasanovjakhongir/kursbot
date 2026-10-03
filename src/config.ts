@@ -81,6 +81,14 @@ const schema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
 
+  // --- Email (admin panel: "Parolni unutdim" kodi). SMTP_HOST bo'lmasa xat yuborilmaydi ---
+  SMTP_HOST: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_USER: z.string().optional().or(z.literal("").transform(() => undefined)),
+  SMTP_PASS: z.string().optional().or(z.literal("").transform(() => undefined)),
+  // Jo'natuvchi: "Bot Admin <no-reply@domen.uz>" yoki no-reply@domen.uz
+  MAIL_FROM: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
+
   // --- CRM integratsiyasi ---
   // Telefon ulashilganda lid shu manzilga POST qilinadi. URL ichidagi kalit maxfiy — faqat .env da.
   // Bo'sh bo'lsa integratsiya o'chiq

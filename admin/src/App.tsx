@@ -5,6 +5,7 @@ import { PendingProvider } from "./context/PendingContext";
 import { Layout } from "./components/Layout";
 import { RequireAuth, RequireSuper } from "./components/guards";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import DashboardPage from "./pages/DashboardPage";
 import TelegramUsersPage from "./pages/TelegramUsersPage";
 import TelegramUserDetailPage from "./pages/TelegramUserDetailPage";
@@ -19,6 +20,7 @@ import BotMenuPage from "./pages/BotMenuPage";
 import AdminsPage from "./pages/AdminsPage";
 import ActivityLogsPage from "./pages/ActivityLogsPage";
 import BotSettingsPage from "./pages/BotSettingsPage";
+import BotTextsPage from "./pages/BotTextsPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ReceiptsPage from "./pages/ReceiptsPage";
@@ -36,6 +38,7 @@ export default function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route
               element={
                 <RequireAuth>
@@ -66,6 +69,7 @@ export default function App() {
               <Route path="activity-logs" element={<RequireSuper><ActivityLogsPage /></RequireSuper>} />
               <Route path="errors" element={<RequireSuper><ErrorsPage /></RequireSuper>} />
               <Route path="bot/settings" element={<RequireSuper><BotSettingsPage /></RequireSuper>} />
+              <Route path="bot/texts" element={<RequireSuper><BotTextsPage /></RequireSuper>} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>

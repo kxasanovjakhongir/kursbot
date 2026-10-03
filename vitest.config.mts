@@ -11,7 +11,9 @@ export default defineConfig({
       LOG_LEVEL: "silent",
       PUBLIC_URL: "https://app.example.uz",
       METRICS_TOKEN: "test-metrics-token-0123456789",
-      // Lokal .env dagi haqiqiy SMTP/CRM sozlamalari testlarga tushmasin (dotenv mavjud qiymatni almashtirmaydi)
+      // Lokal .env dagi qiymatlar testlarga tushmasin (dotenv mavjud qiymatni almashtirmaydi):
+      // testlar CI'dagidek .env siz ham bir xil ishlaydi
+      SUPPORT_USERNAME: "",
       SMTP_HOST: "",
       SMTP_USER: "",
       SMTP_PASS: "",

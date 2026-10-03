@@ -77,6 +77,11 @@ export async function translate(lang: Lang, key: TextKey, vars?: Vars, raw?: Rec
   return fill(template, vars, raw);
 }
 
+/** Admin paneldan shu tildagi matn o'zgartirilganmi (bazada override bor) */
+export async function hasTextOverride(lang: Lang, key: TextKey): Promise<boolean> {
+  return (await loadOverrides()).has(`${lang}:${key}`);
+}
+
 /**
  * Bazaga bormasdan matn: keshdagi override (muddati o'tgan bo'lsa ham) yoki fayldagi standart.
  * Xato ushlagich va spam himoyasi uchun — baza ishlamay qolganda ham javob berishi kerak.

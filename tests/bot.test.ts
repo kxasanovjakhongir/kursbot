@@ -398,8 +398,25 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     expect(textOf(lastScreen())).toBe(uz.support_not_configured);
   });
 
+  it("Yordam: username ham, panel matni ham bo'sh — standart matn + «sozlanmagan» ogohlantirishi", async () => {
+    await send(text("/start"), contact("+998901234567"));
+    calls = [];
+    await send(text(uz.menu_help));
+    expect(textOf(lastScreen())).toBe(`${uz.help}\n\n${uz.support_not_configured}`);
+    expect(buttons(lastScreen()).some((b) => b.url)).toBe(false);
+
+    // Username bor — ogohlantirish yo'q, URL tugma bor
+    await setSetting("support_username", "my_support");
+    calls = [];
+    await send(text(uz.menu_help));
+    expect(textOf(lastScreen())).toBe(uz.help);
+    expect(buttons(lastScreen()).find((b) => b.url)?.url).toBe("https://t.me/my_support");
+  });
+
   it("Yordam xabari va popup matnlari paneldan tahrirlanadi", async () => {
     await send(text("/start"), contact("+998901234567"));
+    // Username sozlanmagan bo'lsa ham admin yozgan matn o'zgarishsiz chiqadi
+    await setSetting("support_username", null);
     await saveEditableTexts("uz", { help: "📞 <b>Yangi yordam</b> matni", error_stale_button: "Eski tugma, qayta tanlang" });
     calls = [];
     await send(text(uz.menu_help));

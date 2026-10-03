@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ArrowLeft, Bold, Code, Eye, Italic, RotateCcw, Search, Underline } from "lucide-react";
+import { ArrowLeft, Bold, ChevronDown, ChevronRight, Code, Eye, Italic, RotateCcw, Search, Underline } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAsync } from "../hooks/useAsync";
 import { api, errorMessage } from "../lib/api";
-import { botTextError, previewHtml } from "../lib/botText";
+import { botTextError, missingRecommendedVars, previewHtml } from "../lib/botText";
 import type { BotTextItem, BotTexts } from "../lib/types";
-import { AsyncView, Badge, Button, Card, EmptyState, Input, PageHeader, Select, Textarea } from "../components/ui";
+import { AsyncView, Badge, Button, Card, EmptyState, Input, PageHeader, Select, Textarea, Toggle } from "../components/ui";
 
 const FORMAT_BADGE: Record<BotTextItem["format"], { label: string; tone: "gray" | "blue" } | null> = {
   html: null,
@@ -14,25 +14,41 @@ const FORMAT_BADGE: Record<BotTextItem["format"], { label: string; tone: "gray" 
   popup: { label: "Qisqa oyna · formatlashsiz", tone: "blue" },
 };
 
+/** Bot bu matnni yubormaydi: paneldan o'chirilgan yoki bo'sh saqlangan */
+const isOff = (item: BotTextItem) => item.disabled || !item.value.trim();
+
+/** Yopiq qatorda ko'rinadigan qisqa matn: teglarsiz, bir qatorda */
+const summary = (text: string) => text.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+
 /** Bitta matn: tahrirlash, o'zgaruvchi qo'shish, formatlash, ko'rinish, saqlash va standartga qaytarish */
 function TextEditor({
   item,
   value,
   saving,
+  toggling,
   onChange,
   onSave,
+  onToggle,
 }: {
   item: BotTextItem;
   value: string;
   saving: boolean;
+  toggling: boolean;
   onChange: (v: string) => void;
   onSave: () => void;
+  onToggle: (enabled: boolean) => void;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [preview, setPreview] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const dirty = value !== item.value;
+  // Saqlanmagan o'zgarishi bor matn yopilmaydi — ko'zdan qochmasin
+  const open = expanded || dirty;
   const error = dirty ? botTextError(item, value) : null;
   const badge = FORMAT_BADGE[item.format];
+  // Yuborilmaydi: paneldan o'chirilgan yoki bo'sh saqlangan
+  const off = isOff(item);
+  const recommended = missingRecommendedVars(item, value);
 
   /** Kursor joyiga qo'shish yoki belgilangan matnni teg bilan o'rash */
   const insert = (before: string, after = "") => {
@@ -49,24 +65,34 @@ function TextEditor({
 
   return (
     <Card className={dirty ? "border-blue-300 ring-1 ring-blue-100" : ""}>
-      <div className="space-y-3 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h3 className="font-medium text-gray-900">{item.title}</h3>
-            {item.hint && <p className="mt-0.5 text-sm text-gray-500">{item.hint}</p>}
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {badge && <Badge tone={badge.tone}>{badge.label}</Badge>}
-            {item.overridden && <Badge tone="yellow">O'zgartirilgan</Badge>}
-            {dirty && <Badge tone="blue">Saqlanmagan</Badge>}
-          </div>
+      {/* Yopiq holatda — bitta qator: nom, matnning boshi va yoqish/o'chirish; bosilsa tahrirlash ochiladi */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <button type="button" onClick={() => setExpanded(!open)} aria-expanded={open} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          {open ? <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" /> : <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />}
+          <span className={`min-w-0 ${off ? "opacity-60" : ""}`}>
+            <span className="block truncate text-sm font-medium text-gray-900">{item.title}</span>
+            {!open && <span className="block truncate text-xs text-gray-500">{summary(item.value) || "Bo'sh — yuborilmaydi"}</span>}
+          </span>
+        </button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {badge && open && <Badge tone={badge.tone}>{badge.label}</Badge>}
+          {item.overridden && <Badge tone="yellow">O'zgartirilgan</Badge>}
+          {dirty && <Badge tone="blue">Saqlanmagan</Badge>}
+          {off && <Badge tone="red">O'chirilgan</Badge>}
+          <Toggle checked={!off} disabled={toggling} onChange={onToggle} label={`${item.title}: yoqish yoki o'chirish`} />
         </div>
+      </div>
+
+      {open && (
+      <div className="space-y-3 border-t border-gray-100 p-4">
+        {item.hint && <p className="text-sm text-gray-500">{item.hint}</p>}
 
         <Textarea
           ref={ref}
           rows={Math.min(12, Math.max(item.format === "popup" ? 2 : 3, value.split("\n").length + 1))}
           maxLength={item.max}
           value={value}
+          placeholder="Bo'sh — bu matn yuborilmaydi"
           onChange={(e) => onChange(e.target.value)}
           className={error ? "border-red-400 focus:border-red-500 focus:ring-red-500" : ""}
         />
@@ -109,6 +135,18 @@ function TextEditor({
         </div>
 
         {error && <p className="text-xs text-red-600">{error}</p>}
+        {!error && dirty && !value.trim() && <p className="text-xs text-amber-700">Bo'sh saqlansa, bu matn o'chiriladi — bot uni yubormaydi.</p>}
+        {!error && recommended.length > 0 && (
+          <p className="text-xs text-amber-700">
+            Matnda {recommended.map((v) => `{${v}}`).join(", ")} yo'q — haqiqiy qiymat ko'rsatilmaydi. Majburiy emas.
+          </p>
+        )}
+        {off && !dirty && (
+          <p className="text-xs text-gray-500">
+            {item.disabled ? "O'chirilgan: matn saqlanib turadi, lekin bot uni hech bir tilda yubormaydi." : "Bo'sh: bot bu matnni shu tilda yubormaydi."}
+            {item.format === "html" && " Tugmali ekranda matn o'rniga 👇 chiqadi (Telegram bo'sh xabarni qabul qilmaydi)."}
+          </p>
+        )}
 
         {preview && (
           <div className="rounded-xl bg-[#8fb6d6] p-3">
@@ -140,6 +178,7 @@ function TextEditor({
           <code className="text-[11px] text-gray-400">{item.key}</code>
         </div>
       </div>
+      )}
     </Card>
   );
 }
@@ -153,6 +192,7 @@ export default function BotTextsPage() {
   const [data, setData] = useState<BotTexts | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [onlyChanged, setOnlyChanged] = useState(false);
   const group = params.get("group") ?? "all";
@@ -195,6 +235,55 @@ export default function BotTextsPage() {
     }
   };
 
+  /** Yoqish/o'chirish darhol saqlanadi (barcha tillar uchun); saqlanmagan qoralamalarga tegilmaydi */
+  const toggle = async (key: string, enabled: boolean) => {
+    setToggling(key);
+    try {
+      const r = await api.put<BotTexts>("/bot/texts", { lang, enabled: { [key]: enabled } });
+      setData(r.data);
+      // Bo'sh qoralama yoqilgan matnni yana o'chirib qo'ymasligi uchun olib tashlanadi
+      if (enabled) setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([k, v]) => k !== key || v.trim())));
+      toast.success(enabled ? "Matn yoqildi" : "Matn o'chirildi — bot uni yubormaydi");
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  /** Bo'limdagi barcha matnlarni birdan yoqish yoki o'chirish */
+  const toggleGroup = async (id: string, enabled: boolean) => {
+    if (!data) return;
+    const keys = data.items.filter((i) => i.group === id && isOff(i) === enabled).map((i) => i.key);
+    if (!keys.length) return;
+    if (!enabled && !window.confirm(`Bo'limdagi ${keys.length} ta matn o'chiriladi — bot ularni yubormaydi. Davom etilsinmi?`)) return;
+    setToggling(id);
+    try {
+      const r = await api.put<BotTexts>("/bot/texts", { lang, enabled: Object.fromEntries(keys.map((k) => [k, enabled])) });
+      setData(r.data);
+      toast.success(`${keys.length} ta matn ${enabled ? "yoqildi" : "o'chirildi"}`);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  /** Bo'lim sarlavhasi yonidagi "hammasini yoqish/o'chirish" */
+  const groupSwitch = (id: string) => {
+    const items = data?.items.filter((i) => i.group === id) ?? [];
+    const offCount = items.filter(isOff).length;
+    const allOff = offCount === items.length;
+    return (
+      <span className="flex items-center gap-2 text-xs font-normal normal-case tracking-normal text-gray-500">
+        {offCount > 0 && `${offCount} / ${items.length} o'chirilgan`}
+        <Button type="button" size="sm" variant="ghost" disabled={toggling !== null} onClick={() => void toggleGroup(id, allOff)}>
+          {allOff ? "Hammasini yoqish" : "Hammasini o'chirish"}
+        </Button>
+      </span>
+    );
+  };
+
   const changeLang = (next: BotTexts["lang"]) => {
     if (dirtyKeys.length && !window.confirm("Saqlanmagan o'zgarishlar yo'qoladi. Davom etilsinmi?")) return;
     setLang(next);
@@ -204,7 +293,7 @@ export default function BotTextsPage() {
   const visible = (data?.items ?? []).filter(
     (i) =>
       (group === "all" || i.group === group) &&
-      (!onlyChanged || i.overridden || dirtyKeys.includes(i.key)) &&
+      (!onlyChanged || i.overridden || i.disabled || dirtyKeys.includes(i.key)) &&
       (!q || i.title.toLowerCase().includes(q) || i.key.includes(q) || (drafts[i.key] ?? i.value).toLowerCase().includes(q)),
   );
   const groupOf = (id: string) => data?.groups.find((g) => g.id === id);
@@ -213,7 +302,7 @@ export default function BotTextsPage() {
     <>
       <PageHeader
         title="Bot matnlari"
-        subtitle="Botdagi barcha tayyor xabarlar. Saqlangan matn botda darhol ishlaydi"
+        subtitle="Keraksiz xabarni o'ngdagi tugma bilan o'chiring; matnni o'zgartirish uchun qatorni bosing"
         action={
           <div className="flex items-center gap-2">
             <Link to="/bot/settings" className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800">
@@ -234,7 +323,7 @@ export default function BotTextsPage() {
               <nav className="space-y-1 lg:sticky lg:top-4 lg:self-start">
                 {[{ id: "all", title: "Barcha matnlar", description: "" }, ...data.groups].map((g) => {
                   const items = data.items.filter((i) => g.id === "all" || i.group === g.id);
-                  const changed = items.filter((i) => i.overridden).length;
+                  const changed = items.filter((i) => i.overridden || i.disabled).length;
                   const unsaved = items.filter((i) => dirtyKeys.includes(i.key)).length;
                   return (
                     <button
@@ -256,7 +345,7 @@ export default function BotTextsPage() {
                 })}
               </nav>
 
-              <div className="min-w-0 space-y-4">
+              <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="relative min-w-[220px] flex-1">
                     <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -268,7 +357,12 @@ export default function BotTextsPage() {
                   </label>
                 </div>
 
-                {group !== "all" && groupOf(group) && <p className="text-sm text-gray-500">{groupOf(group)!.description}</p>}
+                {group !== "all" && groupOf(group) && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-gray-500">{groupOf(group)!.description}</p>
+                    {groupSwitch(group)}
+                  </div>
+                )}
 
                 {dirtyKeys.length > 0 && (
                   <div className="sticky top-2 z-10 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm text-blue-800 shadow-sm">
@@ -290,12 +384,17 @@ export default function BotTextsPage() {
                   visible.map((item) => (
                     <div key={item.key}>
                       {group === "all" && !q && (visible[visible.indexOf(item) - 1]?.group !== item.group) && (
-                        <h2 className="mb-2 mt-4 text-sm font-semibold uppercase tracking-wide text-gray-500 first:mt-0">{groupOf(item.group)?.title}</h2>
+                        <h2 className="mb-2 mt-4 flex flex-wrap items-center justify-between gap-2 text-sm font-semibold uppercase tracking-wide text-gray-500 first:mt-0">
+                          {groupOf(item.group)?.title}
+                          {groupSwitch(item.group)}
+                        </h2>
                       )}
                       <TextEditor
                         item={item}
                         value={drafts[item.key] ?? item.value}
                         saving={saving === item.key}
+                        toggling={toggling !== null}
+                        onToggle={(v) => void toggle(item.key, v)}
                         onChange={(v) => setDrafts((d) => ({ ...d, [item.key]: v }))}
                         onSave={() => void save([item.key])}
                       />

@@ -7,14 +7,15 @@ import { render, type Screen } from "../ui/render";
 import { formatSum } from "../../lib/format";
 import { TtlMap } from "../../lib/ttlMap";
 import { audit } from "../../services/events";
-import { exportFileName, prepareUserExport, type ExportFormat } from "../../services/export";
+import { exportFileName, prepareUserExport, type ExportFormat, type ExportPart } from "../../services/export";
 import { can } from "../../services/permissions";
 import type { UserFilter } from "../../services/users";
 
 /**
  * Bot ichida foydalanuvchilar bazasini yuklab olish ("users.export"). Fayl diskka ham, xotiraga ham
  * to'liq yig'ilmaydi — generatsiya qilinishi bilan Telegram'ga oqim sifatida yuklanadi.
- * Telegram cheklovi: bot yuboradigan fayl 50 MB gacha (undan katta bo'lsa — veb paneldan yuklab olinadi).
+ * Telegram cheklovi: bot yuboradigan fayl 50 MB gacha. Fayl undan katta chiqsa, ro'yxat 2 qismga bo'linib
+ * ikki fayl qilib yuboriladi; qism ham sig'masa — veb paneldan yuklab olinadi.
  */
 export const adminExport = new Composer<BotContext>();
 const exporters = adminExport.chatType("private").filter((ctx) => can(ctx.role, "users.export"));
@@ -31,6 +32,37 @@ const FORMATS: { format: ExportFormat; label: string }[] = [
   { format: "docx", label: "📝 Word" },
   { format: "pdf", label: "📄 PDF" },
 ];
+
+const SPLIT_PARTS = 2;
+
+const isTooLarge = (err: unknown) => err instanceof GrammyError && err.error_code === 413;
+
+/** Bitta faylni (butun ro'yxat yoki uning bir qismi) hosil qilib, oqim bilan yuboradi. Jami foydalanuvchilar soni qaytadi */
+async function sendExport(ctx: BotContext, format: ExportFormat, audience: Audience, part?: ExportPart): Promise<number> {
+  const { summary, write } = await prepareUserExport(format, { status: "all", ...AUDIENCES[audience].filter }, part);
+  await ctx.replyWithChatAction("upload_document").catch(() => undefined);
+  const stream = new PassThrough();
+  const writing = write(stream).catch((err: unknown) => {
+    stream.destroy(err instanceof Error ? err : new Error(String(err)));
+    throw err;
+  });
+  const lines = [
+    `📤 ${AUDIENCES[audience].label}: ${summary.total} ta foydalanuvchi`,
+    ...(summary.part ? [`📑 ${summary.part.index}-qism (jami ${summary.part.of} ta): ${summary.part.from}–${summary.part.to}-qatorlar`] : []),
+    `💳 Sotib olganlar: ${summary.buyers}`,
+    `💰 Jami: ${formatSum(summary.revenue)}`,
+  ];
+  const file = new InputFile(stream, exportFileName(format, summary.generatedAt, part?.index));
+  try {
+    await Promise.all([ctx.replyWithDocument(file, { caption: lines.join("\n") }), writing]);
+  } catch (err) {
+    // Yuborilmadi (masalan, 413): o'qilmay qolgan oqim yopiladi — yozuvchi va baza kursori osilib qolmaydi
+    stream.destroy();
+    writing.catch(() => undefined);
+    throw err;
+  }
+  return summary.total;
+}
 
 /** Bir admin bir vaqtda bitta export (ketma-ket bosishlar serverni band qilmaydi) */
 const running = new TtlMap<number, true>(10 * 60_000);
@@ -62,19 +94,22 @@ exporters.callbackQuery(/^ax:f:([abn]):(xlsx|docx|pdf)$/, async (ctx) => {
   running.set(id, true);
   try {
     await ctx.answerCallbackQuery({ text: "⏳ Fayl tayyorlanmoqda..." });
-    const { summary, write } = await prepareUserExport(format, { status: "all", ...AUDIENCES[audience].filter });
-    await ctx.replyWithChatAction("upload_document").catch(() => undefined);
-    const stream = new PassThrough();
-    const writing = write(stream).catch((err: unknown) => {
-      stream.destroy(err instanceof Error ? err : new Error(String(err)));
-      throw err;
-    });
-    const caption = `📤 ${AUDIENCES[audience].label}: ${summary.total} ta foydalanuvchi\n💳 Sotib olganlar: ${summary.buyers}\n💰 Jami: ${formatSum(summary.revenue)}`;
-    await Promise.all([ctx.replyWithDocument(new InputFile(stream, exportFileName(format)), { caption }), writing]);
-    await audit(ctx.admin?.id ?? null, "export_users", "user", null, null, { format, audience, total: summary.total });
+    let total: number;
+    let parts = 1;
+    try {
+      total = await sendExport(ctx, format, audience);
+    } catch (err) {
+      if (!isTooLarge(err)) throw err;
+      // Fayl 50 MB dan katta — ro'yxat teng ikkiga bo'linib, ikki fayl qilib yuboriladi
+      parts = SPLIT_PARTS;
+      await ctx.reply(`⚠️ Fayl Telegram limiti (50 MB) dan katta — ${parts} qismga bo'lib yuborilmoqda...`);
+      total = 0;
+      for (let index = 1; index <= parts; index++) total = await sendExport(ctx, format, audience, { index, of: parts });
+    }
+    await audit(ctx.admin?.id ?? null, "export_users", "user", null, null, { format, audience, total, parts });
   } catch (err) {
-    if (err instanceof GrammyError && err.error_code === 413) {
-      await ctx.reply("⚠️ Fayl Telegram limiti (50 MB) dan katta. Uni veb admin paneldan yuklab oling.");
+    if (isTooLarge(err)) {
+      await ctx.reply("⚠️ Fayl ikkiga bo'linganda ham Telegram limiti (50 MB) dan katta. Uni veb admin paneldan yuklab oling.");
       return;
     }
     ctx.log.error({ err, format, audience }, "export (bot) xatosi");

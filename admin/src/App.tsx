@@ -21,6 +21,7 @@ import AdminsPage from "./pages/AdminsPage";
 import ActivityLogsPage from "./pages/ActivityLogsPage";
 import BotSettingsPage from "./pages/BotSettingsPage";
 import BotTextsPage from "./pages/BotTextsPage";
+import BotButtonsPage from "./pages/BotButtonsPage";
 import ProfilePage from "./pages/ProfilePage";
 import NotFoundPage from "./pages/NotFoundPage";
 import ReceiptsPage from "./pages/ReceiptsPage";
@@ -70,6 +71,7 @@ export default function App() {
               <Route path="errors" element={<RequireSuper><ErrorsPage /></RequireSuper>} />
               <Route path="bot/settings" element={<RequireSuper><BotSettingsPage /></RequireSuper>} />
               <Route path="bot/texts" element={<RequireSuper><BotTextsPage /></RequireSuper>} />
+              <Route path="bot/buttons" element={<RequireSuper><BotButtonsPage /></RequireSuper>} />
               <Route path="profile" element={<ProfilePage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Route>

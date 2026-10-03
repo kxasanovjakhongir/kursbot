@@ -66,12 +66,14 @@ async function* documentXml(source: ExportSource): AsyncGenerator<string> {
   const grid = COLUMNS.map((c) => `<w:gridCol w:w="${c.width}"/>`).join("");
   yield `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:tblLayout w:type="fixed"/><w:tblBorders>${BORDER}</w:tblBorders><w:tblCellMar><w:left w:w="60" w:type="dxa"/><w:right w:w="60" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${grid}</w:tblGrid>`;
   yield row(COLUMNS.map((c) => c.header), true);
+  // Bo'laklangan faylda tartib raqami oldingi qismdan davom etadi
+  const offset = (source.summary.part?.from ?? 1) - 1;
   let n = 0;
   for await (const rows of source.batches()) {
     // Bir bo'lak — bitta satr (zip oqimiga yoziladi, keyin xotiradan chiqadi)
     yield rows
       .map((r) => {
-        const num = ++n;
+        const num = offset + ++n;
         return row(COLUMNS.map((c) => c.value(r, num)));
       })
       .join("");

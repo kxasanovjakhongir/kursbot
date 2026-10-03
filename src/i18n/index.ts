@@ -31,26 +31,47 @@ export function guessLang(code: string | undefined | null): Lang {
 
 // ---------- Bazadagi override'lar (texts jadvali: key + lang) ----------
 
+/**
+ * Paneldan o'chirilgan matnlar (settings jadvali, barcha tillar uchun). O'chirilgan yoki bo'sh saqlangan matn
+ * bo'sh satr bo'lib qaytadi — bunday xabar yuborilmaydi (bot/emptyText.ts), xabar qismi esa tushib qoladi.
+ */
+export const DISABLED_TEXTS_KEY = "disabled_texts";
+
+interface Overrides {
+  map: Map<string, string>;
+  disabled: Set<string>;
+}
+
 // TTL: boshqa instansda paneldan o'zgartirilgan matn ham ko'pi bilan 30 soniyada ko'rinadi
 const OVERRIDES_TTL_MS = 30_000;
-let overrides: { map: Map<string, string>; at: number } | null = null;
-let loading: Promise<Map<string, string>> | null = null;
+let overrides: (Overrides & { at: number }) | null = null;
+let loading: Promise<Overrides> | null = null;
 let generation = 0;
 
-async function loadOverrides(): Promise<Map<string, string>> {
-  if (overrides && Date.now() - overrides.at < OVERRIDES_TTL_MS) return overrides.map;
+async function loadOverrides(): Promise<Overrides> {
+  if (overrides && Date.now() - overrides.at < OVERRIDES_TTL_MS) return overrides;
   if (!loading) {
     const gen = generation;
-    loading = prisma.text
-      .findMany()
-      .then((rows) => {
+    loading = Promise.all([prisma.text.findMany(), prisma.setting.findUnique({ where: { key: DISABLED_TEXTS_KEY } })])
+      .then(([rows, setting]) => {
         const map = new Map(rows.map((r) => [`${r.lang}:${r.key}`, r.body]));
-        if (gen === generation) overrides = { map, at: Date.now() };
-        return map;
+        const disabled = new Set(Array.isArray(setting?.value) ? setting.value.map(String) : []);
+        if (gen === generation) overrides = { map, disabled, at: Date.now() };
+        return { map, disabled };
       })
       .finally(() => (loading = null));
   }
   return loading;
+}
+
+function template(o: Overrides | null, lang: Lang, key: TextKey): string {
+  if (o?.disabled.has(key)) return "";
+  return o?.map.get(`${lang}:${key}`) ?? LOCALES[lang][key] ?? uz[key];
+}
+
+/** Bo'sh bo'lmagan qismlarni birlashtiradi — o'chirilgan qism o'rnida ortiqcha bo'sh qator qolmaydi */
+export function joinParts(parts: (string | null | undefined | false)[], separator = "\n\n"): string {
+  return parts.filter((p): p is string => typeof p === "string" && p.trim() !== "").join(separator);
 }
 
 export function invalidateTexts(): void {
@@ -72,14 +93,12 @@ export function fill(template: string, vars: Vars = {}, raw: Record<string, stri
 
 /** Matn: avval bazadagi override, keyin shu tilning fayli, oxiri o'zbekcha */
 export async function translate(lang: Lang, key: TextKey, vars?: Vars, raw?: Record<string, string>): Promise<string> {
-  const o = await loadOverrides();
-  const template = o.get(`${lang}:${key}`) ?? LOCALES[lang][key] ?? uz[key];
-  return fill(template, vars, raw);
+  return fill(template(await loadOverrides(), lang, key), vars, raw);
 }
 
 /** Admin paneldan shu tildagi matn o'zgartirilganmi (bazada override bor) */
 export async function hasTextOverride(lang: Lang, key: TextKey): Promise<boolean> {
-  return (await loadOverrides()).has(`${lang}:${key}`);
+  return (await loadOverrides()).map.has(`${lang}:${key}`);
 }
 
 /**
@@ -87,7 +106,7 @@ export async function hasTextOverride(lang: Lang, key: TextKey): Promise<boolean
  * Xato ushlagich va spam himoyasi uchun — baza ishlamay qolganda ham javob berishi kerak.
  */
 export function cachedText(lang: Lang, key: TextKey): string {
-  return overrides?.map.get(`${lang}:${key}`) ?? LOCALES[lang][key] ?? uz[key];
+  return template(overrides, lang, key);
 }
 
 /**

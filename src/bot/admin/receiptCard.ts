@@ -54,7 +54,8 @@ export async function buildReceiptCaption(orderId: bigint, flags: CardFlags = {}
   if (order.shortfall && order.attempts > 1) {
     warn.push(`🟠 <b>Qisman to'lov</b> — oldingi chekda ${formatSum(order.shortfall)} kam edi`);
   } else if (order.attempts > 1) {
-    warn.push(`🟡 Qayta urinish (oldingi sabab: ${escapeHtml(truncate(order.rejectReason ?? "—", REASON_MAX))})`);
+    // Tasdiqlangach sabab tozalanadi (approveOrder) — "oldingi sabab: —" chiqmasin
+    warn.push(order.rejectReason ? `🟡 Qayta urinish (oldingi sabab: ${escapeHtml(truncate(order.rejectReason, REASON_MAX))})` : "🟡 Qayta urinish");
   }
 
   const u = order.user;

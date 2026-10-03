@@ -25,6 +25,7 @@ import { homeScreen } from "./screens/home";
 import { render } from "./ui/render";
 import { installOutgoingLogger, logIncoming } from "./messageLog";
 import { installSupportButtonTracker } from "../services/supportButtons";
+import { installEmptyTextGuard } from "./emptyText";
 import { stripHtml } from "../lib/format";
 import { listOpenOrders } from "../services/orders";
 import { telegramApiCalls } from "../lib/metrics";
@@ -67,6 +68,8 @@ export function createBot(token: string, options: CreateBotOptions = {}): Bot<Bo
   bot.api.config.use(apiMetrics);
   // 429 (flood) — retry_after qadar kutib qayta; tarmoq/5xx xatolari — exponential backoff bilan
   bot.api.config.use(autoRetry({ maxRetryAttempts: 3, maxDelaySeconds: 60, rethrowInternalServerErrors: false }));
+  // Eng tashqi: paneldan o'chirilgan (bo'sh) matnli xabar Telegram'ga ham, log/metrikaga ham yetib bormaydi
+  installEmptyTextGuard(bot.api);
 
   // --- Infratuzilma (tartib muhim) ---
   bot.use(sequentialize(updateKey)); // bitta chat ichida tartib (parallel runner/webhook uchun)

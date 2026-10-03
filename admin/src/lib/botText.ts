@@ -27,15 +27,14 @@ function htmlError(text: string): string | null {
 }
 
 export function botTextError(item: BotTextItem, value: string): string | null {
-  if (!value.trim()) return "Matn bo'sh bo'lmasligi kerak.";
+  // Bo'sh matn — xabar (yoki xabar qismi) o'chiriladi
+  if (!value.trim()) return null;
   if (value.length > item.max) return `Matn ${item.max} belgidan oshmasligi kerak.`;
   const used = [...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]);
   const unknown = used.find((v) => !item.vars.includes(v));
   if (unknown) {
     return `Noma'lum o'zgaruvchi {${unknown}}. ${item.vars.length ? `Ruxsat etilgan: ${item.vars.map((v) => `{${v}}`).join(", ")}.` : "Bu matnda o'zgaruvchi ishlatilmaydi."}`;
   }
-  const missing = item.required.find((v) => !used.includes(v));
-  if (missing) return `Matnda {${missing}} bo'lishi shart.`;
   if (item.format === "popup") return /<[a-zA-Z/]/.test(value) ? "Bu oynada formatlash (HTML teglar) ishlamaydi." : null;
   return htmlError(value);
 }
@@ -71,4 +70,11 @@ export function previewHtml(text: string): string {
       return tag ? tag[closing ? 1 : 0] : m;
     })
     .replace(/\{(\w+)\}/g, '<span class="rounded bg-blue-50 px-1 font-mono text-[13px] text-blue-700">{$1}</span>');
+}
+
+/** Tavsiya etilgan, lekin matnda yo'q o'zgaruvchilar (majburiy emas — ogohlantirish uchun) */
+export function missingRecommendedVars(item: BotTextItem, value: string): string[] {
+  if (!value.trim()) return [];
+  const used = new Set([...value.matchAll(/\{(\w+)\}/g)].map((m) => m[1]));
+  return item.required.filter((v) => !used.has(v));
 }

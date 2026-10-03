@@ -28,14 +28,15 @@ interface Column {
 
 // Jami kenglik = 842 - 2×30 = 782 pt
 const COLUMNS: Column[] = [
-  { header: "№", width: 26, align: "right", value: (_r, n) => String(n) },
+  // 34 pt — olti xonali tartib raqami ham bir qatorga sig'adi (tor ustunda 10 000 dan keyin har qator ikki qavat bo'lib qolardi)
+  { header: "№", width: 34, align: "right", value: (_r, n) => String(n) },
   { header: "Telegram ID", width: 62, value: (r) => r.telegramId },
   { header: "Username", width: 70, value: (r) => r.username },
   { header: "Ism Familiya", width: 96, value: (r) => [r.firstName, r.lastName].filter(Boolean).join(" ") },
   { header: "Telefon", width: 70, value: (r) => r.phone },
   { header: "Ro'yxatdan o'tgan", width: 56, value: (r) => formatDate(r.createdAt) },
   { header: "Oxirgi faollik", width: 56, value: (r) => formatDate(r.lastSeenAt) },
-  { header: "Sotib olgan kurslari", width: 144, value: (r) => r.courses },
+  { header: "Sotib olgan kurslari", width: 136, value: (r) => r.courses },
   { header: "Soni", width: 28, align: "right", value: (r) => String(r.purchaseCount) },
   { header: "Summa (so'm)", width: 60, align: "right", value: (r) => formatMoney(r.totalPaid) },
   { header: "To'lov holati", width: 66, value: (r) => r.paymentStatus },
@@ -117,10 +118,12 @@ export async function writePdf(source: ExportSource, out: Writable): Promise<voi
   doc.moveDown(0.8);
   drawRow(headerCells, true, false);
 
+  // Bo'laklangan faylda tartib raqami oldingi qismdan davom etadi
+  const first = source.summary.part?.from ?? 1;
   let n = 0;
   for await (const rows of source.batches()) {
     for (const r of rows) {
-      const cells = COLUMNS.map((c) => truncate(cleanText(c.value(r, n + 1)), CELL_MAX));
+      const cells = COLUMNS.map((c) => truncate(cleanText(c.value(r, first + n)), CELL_MAX));
       const h = rowHeight(cells);
       if (doc.y + h > pageBottom()) {
         footer();

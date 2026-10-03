@@ -1,13 +1,15 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import type { Bot } from "grammy";
+import type { Bot, InputFile } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 import { prisma } from "../src/db";
 import { createBot } from "../src/bot/bot";
+import { installEmptyTextGuard } from "../src/bot/emptyText";
 import type { BotContext } from "../src/bot/context";
+import { setButtons } from "../src/services/buttons";
 import { addCard } from "../src/services/cards";
 import { invalidateSettings, setSetting } from "../src/services/settings";
 import { installSupportButtonTracker, syncSupportButtons } from "../src/services/supportButtons";
-import { saveEditableTexts } from "../src/services/texts";
+import { saveEditableTexts, setTextsEnabled } from "../src/services/texts";
 import { invalidateTexts } from "../src/i18n";
 import { uz } from "../src/i18n/locales/uz";
 import { ru } from "../src/i18n/locales/ru";
@@ -37,6 +39,8 @@ let calls: Call[] = [];
 let seq = 1000;
 /** Keyingi sendMessage xato bilan tugaydi (xato ushlagichni tekshirish uchun) */
 let failNextSend = false;
+/** Keyingi N ta sendDocument "fayl juda katta" (413) bilan rad etiladi */
+let tooLargeDocs = 0;
 
 function fakeResult(method: string, payload: Record<string, unknown>): unknown {
   const message = () => ({
@@ -67,12 +71,24 @@ function makeBot(): Bot<BotContext> {
   bot.api.config.use(async (_prev, method, payload) => {
     const p = (payload ?? {}) as Record<string, unknown>;
     calls.push({ method, payload: p });
+    if (method === "sendDocument") {
+      // Haqiqiy yuklashdagidek fayl oqimi oxirigacha o'qiladi (aks holda yozuvchi kutib qoladi)
+      let bytes = 0;
+      for await (const chunk of (await (p.document as InputFile).toRaw()) as AsyncIterable<Uint8Array>) bytes += chunk.length;
+      p.bytes = bytes;
+      if (tooLargeDocs > 0) {
+        tooLargeDocs--;
+        return { ok: false, error_code: 413, description: "Request Entity Too Large" } as unknown as Awaited<ReturnType<typeof _prev>>;
+      }
+    }
     if (failNextSend && method === "sendMessage") {
       failNextSend = false;
       throw new Error("soxta tarmoq xatosi");
     }
     return { ok: true, result: fakeResult(method, p) } as unknown as Awaited<ReturnType<typeof _prev>>;
   });
+  // Soxta tarmoq createBot dagi transformerlarni chetlab o'tadi — bo'sh matn himoyasi uning ustidan qayta o'rnatiladi
+  installEmptyTextGuard(bot.api);
   return bot;
 }
 
@@ -237,8 +253,14 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     // To'lov ekranida "Buyurtmani bekor qilish" tugmasi yo'q
     expect(hasButton(pay, `ord:cancel:${order.id}`)).toBe(false);
     expect(buttons(pay).some((b) => b.text.includes("bekor"))).toBe(false);
-    // "Savol berish" tugmasi ham yo'q
+    // Support username sozlanmagan — "Savol berish" tugmasi chiqmaydi
     expect(buttons(pay).some((b) => b.url)).toBe(false);
+    // Sozlangan — "Savol berish" support profiliga olib boradi
+    await setSetting("support_username", "my_support");
+    calls = [];
+    await send(callback(`pay:${order.id}`));
+    expect(buttons(lastScreen()).find((b) => b.text === uz.btn_ask)?.url).toBe("https://t.me/my_support");
+    await setSetting("support_username", null);
 
     // Eski xabardagi tugma bosilsa — bekor qilish tasdiq bilan ishlaydi
     await send(callback(`ord:cancel:${order.id}`));
@@ -396,6 +418,116 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     calls = [];
     await send(callback("contact"));
     expect(textOf(lastScreen())).toBe(uz.support_not_configured);
+  });
+
+  it("eksport: fayl Telegram limitidan katta bo'lsa 2 qismga bo'lib yuboriladi; qism ham sig'masa — panelga yo'naltiradi", async () => {
+    await prisma.admin.update({ where: { telegramId: BigInt(ADMIN.id) }, data: { role: "superadmin" } });
+    await prisma.user.createMany({ data: [1, 2, 3, 4, 5].map((i) => ({ telegramId: BigInt(7000 + i), firstName: `U${i}` })) });
+    const docs = () => calls.filter((c) => c.method === "sendDocument");
+    const name = (c: Call) => (c.payload.document as InputFile).filename;
+
+    // Sig'adi — bitta fayl
+    calls = [];
+    await send(callback("ax:f:a:xlsx", ADMIN));
+    expect(docs()).toHaveLength(1);
+    expect(name(docs()[0])).toMatch(/^users-[\d-]+\.xlsx$/);
+    expect(docs()[0].payload.bytes).toBeGreaterThan(1000);
+
+    // Birinchi urinish 413 — ikki qism
+    calls = [];
+    tooLargeDocs = 1;
+    await send(callback("ax:f:a:xlsx", ADMIN));
+    expect(docs().map(name)).toEqual([expect.stringMatching(/\d\.xlsx$/), expect.stringMatching(/-1qism\.xlsx$/), expect.stringMatching(/-2qism\.xlsx$/)]);
+    expect(String(docs()[1].payload.caption)).toContain("1-qism (jami 2 ta): 1–3-qatorlar");
+    expect(String(docs()[2].payload.caption)).toContain("2-qism (jami 2 ta): 4–6-qatorlar");
+    expect(sent().some((c) => textOf(c).includes("2 qismga bo'lib"))).toBe(true);
+
+    // Qism ham sig'masa — veb panel
+    calls = [];
+    tooLargeDocs = 2;
+    await send(callback("ax:f:a:xlsx", ADMIN));
+    expect(docs()).toHaveLength(2);
+    expect(textOf(lastScreen())).toContain("veb admin paneldan");
+    tooLargeDocs = 0;
+
+    // Keyingi eksport bloklanib qolmagan
+    calls = [];
+    await send(callback("ax:f:a:pdf", ADMIN));
+    expect(docs()).toHaveLength(1);
+  });
+
+  it("bot tugmalari paneldan o'chiriladi va qayta yoqiladi (har bir ekran alohida)", async () => {
+    await send(text("/start"), contact("+998901234567"));
+    await setSetting("support_username", "my_support");
+    const texts = async (...updates: Update[]) => {
+      calls = [];
+      await send(...updates);
+      return buttons(lastScreen()).map((b) => b.text);
+    };
+
+    // Standart holatda hammasi yoqilgan
+    expect(await texts(text("/menu"))).toEqual(expect.arrayContaining([uz.menu_products, uz.menu_help]));
+    // Tavsifi yo'q kurs kartochkasida ortiqcha bo'sh qator yo'q
+    await send(callback("p:qd"));
+    expect(textOf(lastScreen())).not.toMatch(/\n{3}/);
+    expect(await texts(callback("p:4b"))).toContain(uz.btn_ask);
+
+    expect(await setButtons({ "home.help": false, "product.ask": false, "payment.copy_card": false })).toHaveLength(3);
+    // Bosh menyuda «Yordam» yo'q, «Darsliklar» qoladi; katalogdagi «Yordam» alohida boshqariladi
+    const home = await texts(text("/menu"));
+    expect(home).toContain(uz.menu_products);
+    expect(home).not.toContain(uz.menu_help);
+    expect(await texts(text(uz.menu_products))).toContain(uz.menu_help);
+    // Kurs kartochkasi: «Savol berish» yo'q, «Darslikni olaman» doim bor
+    const card = await texts(callback("p:4b"));
+    expect(card).toContain(uz.btn_buy);
+    expect(card).not.toContain(uz.btn_ask);
+    // To'lov: karta nusxalash o'chirilgan, «Savol berish» (payment.ask) yoqilgan
+    const pay = await texts(callback("buy:4b"));
+    expect(pay).not.toContain(uz.btn_copy_card);
+    expect(pay).toContain(uz.btn_ask);
+
+    // Umumiy tugmani boshqa ekranga qo'shish va ekranning o'z tugmasini («Darslikni olaman») o'chirish
+    expect(await texts(text(uz.menu_products))).not.toContain(uz.btn_ask);
+    await setButtons({ "catalog.ask": true, "catalog.home": false, "product.buy": false, "product.profile": true });
+    const catalog = await texts(text(uz.menu_products));
+    expect(catalog).toContain(uz.btn_ask);
+    expect(catalog).not.toContain(uz.btn_home);
+    const noBuy = await texts(callback("p:4b"));
+    expect(noBuy).not.toContain(uz.btn_buy);
+    expect(noBuy).toEqual(expect.arrayContaining([uz.menu_profile, uz.btn_home]));
+    await setButtons({ "product.buy": true });
+
+    // Qayta yoqish; o'zgarmagan qiymat hisobga olinmaydi
+    expect(await setButtons({ "home.help": true, "product.ask": false })).toEqual(["home.help: yoqildi"]);
+    expect(await texts(text("/menu"))).toContain(uz.menu_help);
+    expect(await texts(callback("p:4b"))).not.toContain(uz.btn_ask);
+  });
+
+  it("o'chirilgan yoki bo'sh matn: tugmasiz xabar yuborilmaydi, tugmali ekranda 👇, xabar qismi tushib qoladi", async () => {
+    await send(text("/start"), contact("+998901234567"));
+    // To'lov: faqat sarlavha qoldi — ko'rsatmalar bo'sh, muddat o'chirilgan
+    await saveEditableTexts("uz", { payment_step_1: "", payment_step_2: " " });
+    await setTextsEnabled("uz", { payment_expires: false, choose_product: false, error_unknown_command: false });
+    calls = [];
+    await send(callback("buy:4b"));
+    const pay = textOf(lastScreen());
+    expect(pay).toContain("1 250 000 so'm");
+    expect(pay).not.toContain("gacha amal qiladi");
+    expect(pay).not.toMatch(/\n{3,}|\n$/);
+
+    // Tugmali ekran: matn o'rniga 👇, tugmalar joyida
+    calls = [];
+    await send(text(uz.menu_products));
+    expect(textOf(lastScreen())).toBe("👇");
+    expect(hasButton(lastScreen(), "p:4b")).toBe(true);
+
+    // Qayta yoqilsa — standart matn; bo'sh saqlangan qism ham standartga qaytadi
+    await setTextsEnabled("uz", { choose_product: true, payment_step_1: true });
+    calls = [];
+    await send(text(uz.menu_products));
+    expect(textOf(lastScreen())).toBe(uz.choose_product);
+    expect(await prisma.text.findUnique({ where: { key_lang: { key: "payment_step_1", lang: "uz" } } })).toBeNull();
   });
 
   it("Yordam: username ham, panel matni ham bo'sh — standart matn + «sozlanmagan» ogohlantirishi", async () => {

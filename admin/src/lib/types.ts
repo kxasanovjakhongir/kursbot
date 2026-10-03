@@ -194,6 +194,14 @@ export interface BotSettings {
   courseNameMaxLength: number;
 }
 
+/** Paneldan yoqib-o'chiriladigan bot tugmalari, ekranlar bo'yicha */
+export interface BotButtonScreen {
+  id: string;
+  title: string;
+  /** common — istalgan ekranga qo'shiladigan umumiy tugma; default — standart holati */
+  buttons: { id: string; label: string; hint: string | null; common: boolean; enabled: boolean; default: boolean }[];
+}
+
 export type BotTextFormat = "html" | "popup" | "part";
 
 export interface BotTextItem {
@@ -211,6 +219,8 @@ export interface BotTextItem {
   value: string;
   default: string;
   overridden: boolean;
+  /** Paneldan o'chirilgan (barcha tillarda). Bo'sh saqlangan matn (value === "") ham yuborilmaydi */
+  disabled: boolean;
 }
 
 export interface BotTextGroup {

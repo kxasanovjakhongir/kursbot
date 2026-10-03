@@ -1,6 +1,6 @@
 import type { NextFunction } from "grammy";
 import type { BotContext } from "../context";
-import { guessLang, label } from "../../i18n";
+import { cachedText, guessLang } from "../../i18n";
 import { TtlMap } from "../../lib/ttlMap";
 
 export interface ThrottleOptions {
@@ -27,11 +27,11 @@ export function throttle({ windowMs, limit }: ThrottleOptions) {
     entry.count += 1;
     if (entry.count <= limit) return next();
 
-    const text = label(guessLang(ctx.from.language_code), "error_too_many");
+    const text = cachedText(guessLang(ctx.from.language_code), "error_too_many");
     if (ctx.callbackQuery) {
       await ctx.answerCallbackQuery(entry.warned ? undefined : { text }).catch(() => undefined);
     } else if (!entry.warned) {
-      await ctx.reply(text).catch(() => undefined);
+      await ctx.reply(text, { parse_mode: "HTML" }).catch(() => undefined);
     }
     if (!entry.warned) ctx.log.warn({ count: entry.count }, "rate limit: update lar tashlanmoqda");
     entry.warned = true;

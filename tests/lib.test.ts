@@ -4,6 +4,12 @@ import { normalizePhone } from "../src/lib/phone";
 import { formatSum, formatShortDateTime, isWorkingTime, maskCard, formatPhone } from "../src/lib/format";
 import { canTransition, TRANSITIONS } from "../src/services/orders";
 import { fill } from "../src/services/texts";
+import { normalizeTelegramUsername } from "../src/lib/telegramUsername";
+import { formatCourseName } from "../src/lib/format";
+import { telegramHtmlError } from "../src/lib/telegramHtml";
+import { editableTextError } from "../src/services/texts";
+import { uz as uzTexts } from "../src/i18n/locales/uz";
+import { EDITABLE_TEXT_KEYS } from "../src/i18n/catalog";
 
 describe("deep link (TZ 5.1)", () => {
   it("mahsulot va manbani ajratadi", () => {
@@ -78,5 +84,62 @@ describe("matn shablonlari", () => {
   it("qiymatlar HTML-escape qilinadi, raw — yo'q", () => {
     expect(fill("{a} {b}", { a: "<x>" }, { b: "<b>ok</b>" })).toBe("&lt;x&gt; <b>ok</b>");
     expect(fill("{yoq}")).toBe("{yoq}");
+  });
+});
+
+describe("support username normalizatsiyasi", () => {
+  it("@, havola va oddiy yozuv bir xil username beradi", () => {
+    for (const raw of ["support", "@support", " @support ", "https://t.me/support", "http://telegram.me/support", "t.me/support"]) {
+      expect(normalizeTelegramUsername(raw)).toBe("support");
+    }
+    expect(normalizeTelegramUsername("@support_123")).toBe("support_123");
+    expect(normalizeTelegramUsername("new_support")).toBe("new_support");
+  });
+  it("yaroqsiz qiymatlar rad etiladi", () => {
+    for (const raw of ["", "@", "@new support", "abc", "1support", "support_", "sup__port", "https://t.me/support/1", "t.me/+invite", "<b>x</b>", "a".repeat(33)]) {
+      expect(normalizeTelegramUsername(raw)).toBeNull();
+    }
+  });
+});
+
+describe("kurs nomini ko'rsatish", () => {
+  it("limitgacha qisqartiradi, qisqa nom to'liq qoladi", () => {
+    expect(formatCourseName("Node js kursi", 7)).toBe("Node js");
+    expect(formatCourseName("Node js kursi", 8)).toBe("Node js"); // oxiridagi bo'shliq olib tashlanadi
+    expect(formatCourseName("Node js kursi", 10)).toBe("Node js ku");
+    expect(formatCourseName("Node js kursi", 100)).toBe("Node js kursi");
+    expect(formatCourseName("🚀🚀🚀 Kurs", 2)).toBe("🚀🚀"); // emoji bo'linmaydi
+  });
+});
+
+describe("tahrirlanadigan bot matnlari", () => {
+  it("standart matnlar yaroqli", () => {
+    for (const key of ["intro_video_text", "payment_step_1", "payment_step_2", "payment_expires"] as const) {
+      expect(editableTextError(key, uzTexts[key])).toBeNull();
+    }
+  });
+  it("bo'sh, {expires_at} siz, noma'lum o'zgaruvchi va buzuq HTML rad etiladi", () => {
+    expect(editableTextError("payment_step_1", "  ")).toMatch(/bo'sh/);
+    expect(editableTextError("payment_expires", "⏳ Buyurtma 06.10.2026 06:41 gacha amal qiladi.")).toMatch(/\{expires_at\}/);
+    expect(editableTextError("payment_step_1", "{nimadir} ga o'tkazing")).toMatch(/Noma'lum/);
+    expect(editableTextError("intro_video_text", "a".repeat(801))).toMatch(/800/);
+    expect(telegramHtmlError("<b>qalin")).toMatch(/yopilmagan/);
+    expect(telegramHtmlError("<b>x</i>")).toMatch(/noto'g'ri/);
+    expect(telegramHtmlError("1 < 2")).toMatch(/&lt;/);
+    expect(telegramHtmlError("<div>x</div>")).toMatch(/qo'llab-quvvatlanmaydi/);
+    expect(telegramHtmlError('<b>ok</b> &amp; <a href="https://t.me/x">link</a> 🎉')).toBeNull();
+  });
+});
+
+describe("bot matnlari katalogi", () => {
+  it("tugma yozuvlaridan tashqari barcha matnlar admin panelda tahrirlanadi", () => {
+    const isLabel = (k: string) => /^(btn_|menu_|adm_btn_|role_)/.test(k) || ["phone_button", "loading", "not_set"].includes(k);
+    const missing = Object.keys(uzTexts).filter((k) => !isLabel(k) && !(EDITABLE_TEXT_KEYS as string[]).includes(k));
+    expect(missing).toEqual([]);
+    expect(EDITABLE_TEXT_KEYS.filter(isLabel)).toEqual([]);
+    expect(new Set(EDITABLE_TEXT_KEYS).size).toBe(EDITABLE_TEXT_KEYS.length);
+  });
+  it("barcha standart matnlar o'z qoidalariga mos", () => {
+    for (const key of EDITABLE_TEXT_KEYS) expect([key, editableTextError(key, uzTexts[key])]).toEqual([key, null]);
   });
 });

@@ -1,10 +1,11 @@
 import { InlineKeyboard } from "grammy";
 import type { NotificationKind } from "@prisma/client";
 import type { BotContext } from "../context";
-import { contactAdminKeyboard, withNav, withPagination } from "../keyboards";
+import { withNav, withPagination } from "../keyboards";
 import { LANG_NAMES, LANGS } from "../../i18n";
 import { escapeHtml, formatDate, formatPhone, formatShortDateTime, formatSum, stripHtml, truncate } from "../../lib/format";
 import { listNotifications } from "../../services/notifications";
+import { getSupportUrl } from "../../services/settings";
 import { displayName, userStats } from "../../services/users";
 import { CB } from "../ui/callbacks";
 import type { Screen } from "../ui/render";
@@ -53,9 +54,18 @@ export async function languageScreen(ctx: BotContext): Promise<Screen> {
   return { text: await ctx.t("language_title"), keyboard: withNav(kb, ctx.lang, CB.settings) };
 }
 
-/** 💬 Yordam: qisqa yo'riqnoma va admin bilan bog'lanish */
+/**
+ * 💬 Yordam: qisqa yo'riqnoma va support profiliga URL tugma (username — admin panel → Bot sozlamalari).
+ * Username sozlanmagan bo'lsa yaroqsiz havola yasalmaydi, foydalanuvchiga ogohlantirish ko'rsatiladi.
+ */
 export async function helpScreen(ctx: BotContext): Promise<Screen> {
-  return { text: await ctx.t("help"), keyboard: withNav(contactAdminKeyboard(ctx.lang), ctx.lang) };
+  const url = await getSupportUrl();
+  if (!url) {
+    const text = `${await ctx.t("help")}\n\n${await ctx.t("support_not_configured")}`;
+    return { text, keyboard: withNav(new InlineKeyboard(), ctx.lang) };
+  }
+  const kb = new InlineKeyboard().url(ctx.label("btn_contact_admin"), url);
+  return { text: await ctx.t("help"), keyboard: withNav(kb, ctx.lang) };
 }
 
 const NOTIFICATION_ICON: Record<NotificationKind, string> = {

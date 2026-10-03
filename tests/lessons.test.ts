@@ -5,7 +5,8 @@ import { prisma } from "../src/db";
 import { createBot } from "../src/bot/bot";
 import type { BotContext } from "../src/bot/context";
 import { addCard } from "../src/services/cards";
-import { invalidateSettings } from "../src/services/settings";
+import { invalidateSettings, setSetting } from "../src/services/settings";
+import { saveEditableTexts } from "../src/services/texts";
 import { invalidateTexts } from "../src/i18n";
 import { uz } from "../src/i18n/locales/uz";
 import { extractLessonMedia, moveLesson } from "../src/services/lessons";
@@ -100,6 +101,7 @@ const answers = () => calls.filter((c) => c.method === "answerCallbackQuery").ma
 interface Button {
   text: string;
   callback_data?: string;
+  url?: string;
 }
 function buttons(c: Call | undefined): Button[] {
   const markup = c?.payload.reply_markup as { inline_keyboard?: Button[][]; keyboard?: { text: string }[][] } | undefined;
@@ -346,6 +348,46 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     expect(answers()).toContain(uz.error_not_found);
   });
 
+  it("paneldan tahrirlangan tanishtiruv/to'lov matnlari va kurs nomi uzunligi botda darhol ishlatiladi", async () => {
+    await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
+    await prisma.product.update({ where: { code: "js" }, data: { title: "Node js kursi", videoFileId: "intro-js" } });
+    await saveEditableTexts("uz", {
+      intro_video_text: "Yangi <b>tanishtiruv</b> matni 🎬",
+      payment_step_1: "1️⃣ {summa} ni o'tkazing.",
+      payment_step_2: "2️⃣ Chekni yuboring.",
+      payment_expires: "⏳ Muddat: {expires_at}.",
+    });
+    await setSetting("course_name_max_length", 7);
+
+    calls = [];
+    await send(callback("p:js"));
+    const intro = calls.find((c) => c.method === "sendVideo")!;
+    expect(String(intro.payload.caption)).toBe("🎥 <b>Node js</b> — tanishtiruv videosi\n\nYangi <b>tanishtiruv</b> matni 🎬");
+    expect(String(intro.payload.parse_mode)).toBe("HTML");
+
+    calls = [];
+    await send(callback("nav:cat:1"));
+    expect(lastButtons().some((b) => b.text.startsWith("Node js —") || b.text === "Node js")).toBe(true);
+    expect(lastButtons().some((b) => b.text.includes("Node js kursi"))).toBe(false);
+
+    calls = [];
+    await send(callback("buy:js"));
+    const pay = lastText();
+    const order = await prisma.order.findFirstOrThrow({ where: { product: { code: "js" } } });
+    const expires = order.expiresAt.toLocaleString("ru-RU", { timeZone: "Asia/Tashkent", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", "");
+    expect(pay).toContain("Darslik: Node js\n");
+    expect(pay).toContain("1️⃣ 500 000 so'm ni o'tkazing.\n2️⃣ Chekni yuboring.");
+    expect(pay).toContain(`⏳ Muddat: ${expires}.`);
+    expect(pay).not.toContain("{expires_at}");
+
+    // Limit o'zgardi — keyingi ekranda darhol; bazadagi nom o'zgarmagan
+    await setSetting("course_name_max_length", 10);
+    calls = [];
+    await send(callback("nav:cat:1"));
+    expect(lastButtons().some((b) => b.text.startsWith("Node js ku"))).toBe(true);
+    expect((await prisma.product.findUniqueOrThrow({ where: { code: "js" } })).title).toBe("Node js kursi");
+  });
+
   it("TEST 6 + 7: sotib olmagan foydalanuvchi kursni tanlaydi — tanishtiruv video, tavsif, narx, Sotib olish; darslar yopiq; Mini App yo'q", async () => {
     await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
     await prisma.product.update({ where: { code: "js" }, data: { videoFileId: "intro-js", description: "JavaScript asoslari" } });
@@ -364,7 +406,14 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     expect(String(info.payload.text)).toContain("500 000");
     const kb = buttons(info);
     expect(kb.some((b) => b.callback_data === "buy:js")).toBe(true);
-    expect(kb.some((b) => b.callback_data === "nav:cat:1")).toBe(true); // ⬅️ Ortga
+    // Kurs kartochkasi: «Darslikni olaman» va «Bosh menyu» bor, «Orqaga» yo'q
+    expect(kb.some((b) => b.callback_data === "nav:home")).toBe(true);
+    expect(kb.some((b) => b.text === uz.btn_back || b.callback_data === "nav:cat:1")).toBe(false);
+    // «Savol berish» (support URL) tugmasi ham yo'q
+    await setSetting("support_username", "my_support");
+    calls = [];
+    await send(callback("p:js"));
+    expect(lastButtons().some((b) => b.url)).toBe(false);
     expect([...kb, ...buttons(intro)].some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
     // Asosiy dars videosi yuborilmagan
     expect(calls.filter((c) => c.method === "sendVideo").map((c) => c.payload.video)).toEqual(["intro-js"]);

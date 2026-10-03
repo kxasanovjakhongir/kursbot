@@ -1,7 +1,7 @@
 import { GrammyError, HttpError, type NextFunction } from "grammy";
 import { Prisma } from "@prisma/client";
 import type { BotContext } from "../context";
-import { guessLang, label, type TextKey } from "../../i18n";
+import { cachedText, guessLang, type TextKey } from "../../i18n";
 import { alertTech } from "../notify";
 
 export type ErrorKind = "ignore" | "blocked" | "database" | "network" | "generic";
@@ -77,12 +77,12 @@ export async function handleBotError(ctx: BotContext, err: unknown): Promise<voi
   }
   // Baza ishlamasa foydalanuvchi tili noma'lum bo'lishi mumkin — matn fayldan (bazasiz) olinadi
   const lang = ctx.user ? ctx.lang : guessLang(ctx.from?.language_code);
-  const text = label(lang, USER_MESSAGE[kind]);
+  const text = cachedText(lang, USER_MESSAGE[kind]);
   if (ctx.callbackQuery) {
     await ctx.answerCallbackQuery({ text, show_alert: true }).catch(() => undefined);
     return;
   }
-  await ctx.reply(text).catch(() => undefined);
+  await ctx.reply(text, { parse_mode: "HTML" }).catch(() => undefined);
 }
 
 export async function errorBoundary(ctx: BotContext, next: NextFunction): Promise<void> {

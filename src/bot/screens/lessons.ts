@@ -5,6 +5,7 @@ import { withNav, withPagination } from "../keyboards";
 import { prisma } from "../../db";
 import { listLessons } from "../../services/lessons";
 import { componentProducts } from "../../services/products";
+import { courseNameFormatter, displayCourseName } from "../../services/settings";
 import { CB } from "../ui/callbacks";
 import { paginate, type Screen } from "../ui/render";
 
@@ -20,8 +21,9 @@ const lessonButton = (icon: string, position: number, title: string) => `${icon}
 export async function ownedCourseScreen(ctx: BotContext, product: Product, page = 1): Promise<Screen> {
   const kb = new InlineKeyboard();
   if (product.type === "bundle") {
-    for (const part of await componentProducts(product)) kb.text(part.title, CB.product(part.code)).row();
-    return { text: await ctx.t("course_bundle_owned", { mahsulot: product.title }), keyboard: withNav(kb, ctx.lang, CB.catalog()) };
+    const name = await courseNameFormatter();
+    for (const part of await componentProducts(product)) kb.text(name(part.title), CB.product(part.code)).row();
+    return { text: await ctx.t("course_bundle_owned", { mahsulot: name(product.title) }), keyboard: withNav(kb, ctx.lang, CB.catalog()) };
   }
 
   const [lessons, grant] = await Promise.all([
@@ -37,7 +39,7 @@ export async function ownedCourseScreen(ctx: BotContext, product: Product, page 
   if (grant) kb.row().text(ctx.label("btn_channel_link"), CB.link(grant.id));
 
   const hint = lessons.length ? await ctx.t("course_lessons_hint", { soni: lessons.length }) : await ctx.t("course_no_lessons");
-  const text = `${await ctx.t("course_owned", { mahsulot: product.title })}\n\n${hint}`;
+  const text = `${await ctx.t("course_owned", { mahsulot: await displayCourseName(product.title) })}\n\n${hint}`;
   return { text, keyboard: withNav(kb, ctx.lang, CB.catalog()) };
 }
 
@@ -51,7 +53,7 @@ export async function lockedLessonsScreen(ctx: BotContext, product: Product, pag
   withPagination(kb, p.page, p.pages, (n) => CB.lessons(product.code, n));
   kb.row().text(ctx.label("btn_buy"), CB.buy(product.code));
   return {
-    text: await ctx.t("lessons_title", { mahsulot: product.title, soni: lessons.length }),
+    text: await ctx.t("lessons_title", { mahsulot: await displayCourseName(product.title), soni: lessons.length }),
     keyboard: withNav(kb, ctx.lang, CB.product(product.code)),
   };
 }

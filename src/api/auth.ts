@@ -34,6 +34,13 @@ function readPayload(token: string): TokenPayload | null {
 }
 
 /**
+ * "Parolni unutdim" (OTP) orqali kirgan admin yangi parol o'rnatmaguncha faqat shularga kira oladi.
+ * Qolgan HAMMA marshrutlar (kelajakda qo'shiladiganlari ham) yopiq.
+ */
+const PASSWORD_CHANGE_ALLOWED = new Set(["GET /api/auth/me", "POST /api/auth/logout", "PUT /api/auth/password", "PATCH /api/auth/password"]);
+export const PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED";
+
+/**
  * JWT tekshiruvi. Foydalanuvchi har so'rovda bazadan qayta o'qiladi —
  * o'chirilgan yoki roli o'zgargan admin darhol huquqini yo'qotadi.
  */
@@ -46,6 +53,9 @@ export const requireAuth: RequestHandler = async (req, _res, next) => {
   const user = await prisma.panelUser.findUnique({ where: { id: Number(payload.sub) } });
   if (!user || !user.isActive || payload.pv !== passwordVersion(user.passwordHash)) throw new HttpError(401, "Sessiya yaroqsiz");
   req.panelUser = toSafe(user);
+  if (user.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(`${req.method} ${req.originalUrl.split("?")[0].replace(/\/+$/, "")}`)) {
+    throw new HttpError(403, "Xavfsizlik uchun avval yangi parol o'rnating", { code: PASSWORD_CHANGE_REQUIRED });
+  }
   next();
 };
 

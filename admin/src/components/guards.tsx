@@ -8,6 +8,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (loading) return <Spinner />;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // Kod (OTP) bilan kirilgan: yangi parol o'rnatmaguncha faqat profil (parol) sahifasi
+  if (user.mustChangePassword && location.pathname !== "/profile") return <Navigate to="/profile" replace />;
   return <>{children}</>;
 }
 

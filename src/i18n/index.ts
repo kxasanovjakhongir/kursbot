@@ -78,6 +78,14 @@ export async function translate(lang: Lang, key: TextKey, vars?: Vars, raw?: Rec
 }
 
 /**
+ * Bazaga bormasdan matn: keshdagi override (muddati o'tgan bo'lsa ham) yoki fayldagi standart.
+ * Xato ushlagich va spam himoyasi uchun — baza ishlamay qolganda ham javob berishi kerak.
+ */
+export function cachedText(lang: Lang, key: TextKey): string {
+  return overrides?.map.get(`${lang}:${key}`) ?? LOCALES[lang][key] ?? uz[key];
+}
+
+/**
  * Tugma yozuvlari — sinxron, faqat fayldan (override qilinmaydi):
  * reply-klaviatura tugmasi bosilganda matn aynan shu yozuvga solishtiriladi.
  */

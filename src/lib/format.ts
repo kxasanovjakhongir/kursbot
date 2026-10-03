@@ -51,6 +51,15 @@ export function isWorkingTime(date: Date, start: string, end: string): boolean {
   return s <= e ? m >= s && m < e : m >= s || m < e;
 }
 
+/**
+ * Kurs nomining Telegram'da ko'rinadigan qismi: ko'pi bilan `max` belgi (emoji bitta belgi sanaladi),
+ * "..." qo'shilmaydi — tugma kengligi oldindan aniq bo'ladi. Bazadagi nom o'zgarmaydi.
+ */
+export function formatCourseName(name: string, max: number): string {
+  const chars = Array.from(name.trim());
+  return chars.length <= max ? chars.join("") : chars.slice(0, max).join("").trimEnd();
+}
+
 export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

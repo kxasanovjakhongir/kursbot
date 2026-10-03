@@ -26,7 +26,9 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, next) 
     return;
   }
   if (err instanceof HttpError) {
-    res.status(err.status).json({ error: err.message, details: err.details });
+    // Mashina o'qiydigan kod (masalan PASSWORD_CHANGE_REQUIRED) yuqori darajada ham beriladi
+    const code = typeof err.details === "object" && err.details !== null && "code" in err.details ? err.details.code : undefined;
+    res.status(err.status).json({ error: err.message, code, details: err.details });
     return;
   }
   if (err instanceof MulterError) {

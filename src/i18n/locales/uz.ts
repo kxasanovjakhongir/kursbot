@@ -30,7 +30,6 @@ export const uz = {
   btn_home: "🏠 Bosh menyu",
   btn_cancel: "❌ Bekor qilish",
   action_cancelled: "Bekor qilindi.",
-  text_fallback: "Kerakli bo'limni tanlang 👇",
   loading: "⏳ Ma'lumotlar yuklanmoqda...",
 
   // ---------- Darsliklar ----------
@@ -51,18 +50,19 @@ export const uz = {
   course_program: "🎓 <b>{mahsulot}</b> — dastur\n\n{v}",
   course_teacher: "👨‍🏫 <b>{mahsulot}</b> — o'qituvchi\n\n{v}",
   btn_buy: "✅ Darslikni olaman",
-  btn_ask: "💬 Savol berish",
   already_owned: "✅ Siz bu darslikni olgansiz.\n\nKanal linkini kurs sahifasidagi «🔗 Kanal havolasi» tugmasi orqali qayta olishingiz mumkin.",
   bundle_partial: "Sizda to'plamdagi darsliklardan biri allaqachon bor. Yetishmayotgan darslik:",
 
   // ---------- To'lov ----------
   payment_info:
-    "🧾 <b>Buyurtma #{raqam}</b>\n\n📚 Darslik: {mahsulot}\n💰 Summa: <b>{summa}</b>\n💳 Karta: <code>{karta}</code>\n👤 Egasi: {karta_egasi}\n\n1️⃣ Kartaga aynan shu summani o'tkazing.\n2️⃣ To'lov chekini (skrinshot yoki PDF) <b>shu chatga yuboring</b>.\n\n⏳ Buyurtma {muddat} gacha amal qiladi.",
+    "🧾 <b>Buyurtma #{raqam}</b>\n\n📚 Darslik: {mahsulot}\n💰 Summa: <b>{summa}</b>\n💳 Karta: <code>{karta}</code>\n👤 Egasi: {karta_egasi}",
+  payment_step_1: "1️⃣ Kartaga aynan shu summani o'tkazing.",
+  payment_step_2: "2️⃣ To'lov chekini (skrinshot yoki PDF) <b>shu chatga yuboring</b>.",
+  payment_expires: "⏳ Buyurtma {expires_at} gacha amal qiladi.",
   payment_info_shortfall: "\n\n⚠️ Oldingi to'lovda <b>{farq}</b> kam edi. Qolgan summani o'tkazib, chekni yuboring.",
   payment_under_review: "🔎 Buyurtma #{raqam} bo'yicha chekingiz tekshirilmoqda. Tez orada javob beramiz.",
   payment_unavailable: "😔 Kechirasiz, to'lov ma'lumotlari hozircha tayyor emas. Admin tez orada siz bilan bog'lanadi.",
   btn_copy_card: "📋 Karta raqamini nusxalash",
-  btn_cancel_order: "🗑 Buyurtmani bekor qilish",
   order_cancel_confirm:
     "❓ <b>Buyurtma #{raqam} bekor qilinsinmi?</b>\n\n{mahsulot}\n\nKeyin istalgan vaqtda qaytadan buyurtma berishingiz mumkin.",
   btn_cancel_yes: "✅ Ha, bekor qilish",
@@ -95,7 +95,7 @@ export const uz = {
   btn_resend: "🔁 Chekni qayta yuborish",
   btn_contact_admin: "👤 Admin bilan bog'lanish",
   contact_admin_hint: "Admin bilan bog'lanish uchun: {kontakt}",
-  contact_admin_fallback: "admin tez orada siz bilan bog'lanadi",
+  support_not_configured: "ℹ️ Yordam xizmati hozircha sozlanmagan.",
   joined_welcome: "🎉 Xush kelibsiz! {mahsulot} kanaldagi birinchi postdan boshlanadi.",
 
   // ---------- Rad etish sabablari (mijozga) ----------
@@ -146,7 +146,8 @@ export const uz = {
   course_no_lessons: "🎬 Darslar hali qo'shilmagan. Qo'shilishi bilan shu yerda paydo bo'ladi.",
   course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nTo'plamdagi kursni tanlang 👇",
   lessons_title: "🎬 <b>{mahsulot}</b> — darslar ({soni} ta)\n\n🔒 Darslarni ko'rish uchun kursni xarid qiling.",
-  intro_video_caption: "🎥 <b>{mahsulot}</b> — tanishtiruv videosi\n\nVideoni ko'rib chiqing, kurs haqida batafsil ma'lumot va narx pastda 👇",
+  intro_video_title: "🎥 <b>{mahsulot}</b> — tanishtiruv videosi",
+  intro_video_text: "Videoni ko'rib chiqing, kurs haqida batafsil ma'lumot va narx pastda 👇",
   btn_lessons: "🎬 Darslar ({soni})",
   btn_channel_link: "🔗 Kanal havolasi",
   lesson_locked: "🔒 Bu darslikdan foydalanish uchun avval kursni xarid qilishingiz kerak.",

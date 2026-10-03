@@ -28,12 +28,12 @@ pm.hears(allLabels("menu_profile"), showProfile);
 pm.callbackQuery(CB.profile, showProfile);
 
 pm.callbackQuery(CB.changePhone, async (ctx) => {
-  await ctx.reply(await ctx.t("phone_update_prompt"), { reply_markup: phoneKeyboard(ctx.lang, true) });
+  await ctx.reply(await ctx.t("phone_update_prompt"), { parse_mode: "HTML", reply_markup: phoneKeyboard(ctx.lang, true) });
 });
 
 // Reply-klaviaturadagi "❌ Bekor qilish" (masalan, raqam yangilashdan voz kechish)
 pm.hears(allLabels("btn_cancel"), async (ctx) => {
-  await ctx.reply(await ctx.t("action_cancelled"), { reply_markup: mainMenu(ctx.lang, ctx.role) });
+  await ctx.reply(await ctx.t("action_cancelled"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
 });
 
 pm.callbackQuery(new RegExp(`^nav:notif:${PAGE_RE}$`), async (ctx) => {
@@ -53,7 +53,7 @@ pm.callbackQuery(new RegExp(`^set:lang:(${LANGS.join("|")})$`), async (ctx) => {
   await trackEvent(ctx.user.id, "language", { lang });
   await render(ctx, await settingsScreen(ctx));
   // Pastki menyu ham yangi tilda bo'lishi uchun yangi klaviatura yuboriladi
-  await ctx.reply(await ctx.t("language_changed"), { reply_markup: mainMenu(ctx.lang, ctx.role) });
+  await ctx.reply(await ctx.t("language_changed"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
 });
 
 pm.callbackQuery(CB.toggleNews, async (ctx) => {

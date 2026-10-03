@@ -19,19 +19,21 @@ const BASE_TITLE = "Bot Admin Panel";
 /** Yangi cheklarni kuzatadi (menyudagi son, toast, brauzer bildirishnomasi) va ochiq texnik xatolar sonini */
 export function PendingProvider({ children }: { children: ReactNode }) {
   const toast = useToast();
-  const { isSuper } = useAuth();
+  const { isSuper, user } = useAuth();
+  // Yangi parol o'rnatilmaguncha server boshqa bo'limlarni yopadi — so'rov yuborilmaydi
+  const locked = !!user?.mustChangePassword;
   const [count, setCount] = useState(0);
   const [errorsCount, setErrorsCount] = useState(0);
   const [latestReceiptId, setLatest] = useState<string | null>(null);
   const lastSeen = useRef<bigint | null>(null);
 
   const refreshErrors = useCallback(() => {
-    if (!isSuper) return;
+    if (!isSuper || locked) return;
     api
       .get<{ open: number }>("/errors/count")
       .then(({ data }) => setErrorsCount(data.open))
       .catch(() => undefined);
-  }, [isSuper]);
+  }, [isSuper, locked]);
 
   useEffect(() => {
     refreshErrors();
@@ -40,6 +42,7 @@ export function PendingProvider({ children }: { children: ReactNode }) {
   }, [refreshErrors]);
 
   const fetchPending = useCallback(() => {
+    if (locked) return;
     api
       .get<{ count: number; latestReceiptId: string | null }>("/orders/pending-count")
       .then(({ data }) => {
@@ -57,7 +60,7 @@ export function PendingProvider({ children }: { children: ReactNode }) {
         if (lastSeen.current === null) lastSeen.current = 0n;
       })
       .catch(() => undefined);
-  }, [toast]);
+  }, [toast, locked]);
 
   const refresh = useCallback(() => {
     fetchPending();

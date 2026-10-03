@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { notifyUser } from "../bot/notify";
 import { translate, type TextKey } from "../i18n";
 import { formatDate } from "../lib/format";
+import { displayCourseName } from "./settings";
 import { logger } from "../lib/logger";
 import { setBanned, userLang } from "./users";
 import type { GrantWithProduct } from "./access";
@@ -70,7 +71,7 @@ export async function revokeGrant(api: Api, grant: GrantFull, reason: GrantRevok
   }
   await prisma.accessGrant.update({ where: { id: grant.id }, data: { revokedAt: new Date(), revokeReason: reason } });
   if (opts.notify) {
-    await notify(api, user, reason === "expired" ? "access_expired" : "access_removed", { mahsulot: product.title }, "warning");
+    await notify(api, user, reason === "expired" ? "access_expired" : "access_removed", { mahsulot: await displayCourseName(product.title) }, "warning");
   }
 }
 
@@ -98,7 +99,7 @@ export async function setGrantExpiry(api: Api, grantId: bigint, expiresAt: Date 
     },
     include: { product: true, user: true },
   });
-  const vars = { mahsulot: grant.product.title, sana: expiresAt ? formatDate(expiresAt) : "" };
+  const vars = { mahsulot: await displayCourseName(grant.product.title), sana: expiresAt ? formatDate(expiresAt) : "" };
   await notify(api, grant.user, restoring ? "access_restored" : expiresAt ? "access_extended" : "access_unlimited", vars, "success");
   return updated;
 }
@@ -194,7 +195,7 @@ export async function remindExpiringGrants(api: Api): Promise<number> {
   for (const g of grants) {
     // Avval belgilanadi — xato bo'lsa ham eslatma takrorlanmaydi
     await prisma.accessGrant.update({ where: { id: g.id }, data: { expiryRemindedAt: new Date() } });
-    await notify(api, g.user, "access_expiring", { mahsulot: g.product.title, sana: formatDate(g.expiresAt!) }, "warning");
+    await notify(api, g.user, "access_expiring", { mahsulot: await displayCourseName(g.product.title), sana: formatDate(g.expiresAt!) }, "warning");
   }
   return grants.length;
 }

@@ -36,13 +36,24 @@ api.interceptors.request.use((cfg) => {
 
 /** Sessiya tugaganda (401) AuthContext foydalanuvchini login sahifasiga qaytaradi */
 export const UNAUTHORIZED_EVENT = "auth:unauthorized";
+/** Server "avval yangi parol o'rnating" desa (403 PASSWORD_CHANGE_REQUIRED) — parol sahifasiga */
+export const PASSWORD_CHANGE_EVENT = "auth:password-change-required";
+
+const PUBLIC_AUTH = ["/auth/login", "/auth/forgot-password", "/auth/verify-otp"];
 
 api.interceptors.response.use(
   (res) => res,
   (err: unknown) => {
-    if (err instanceof AxiosError && err.response?.status === 401 && !err.config?.url?.includes("/auth/login")) {
-      tokenStore.clear();
-      window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+    if (err instanceof AxiosError) {
+      const url = err.config?.url ?? "";
+      if (err.response?.status === 401 && !PUBLIC_AUTH.some((p) => url.includes(p))) {
+        tokenStore.clear();
+        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+      }
+      const data: unknown = err.response?.data;
+      if (err.response?.status === 403 && typeof data === "object" && data !== null && "code" in data && data.code === "PASSWORD_CHANGE_REQUIRED") {
+        window.dispatchEvent(new Event(PASSWORD_CHANGE_EVENT));
+      }
     }
     return Promise.reject(err);
   },

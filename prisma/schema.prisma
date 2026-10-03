@@ -388,6 +388,23 @@ model Setting {
   @@map("settings")
 }
 
+/// Bot yuborgan, support profiliga URL tugmasi bor xabarlar. Paneldan username o'zgartirilsa,
+/// fon vazifasi shu xabarlardagi tugmalarni yangi havolaga almashtiradi (eski xabarlar ham yangisini ochadi)
+model SupportButtonMessage {
+  chatId    BigInt   @map("chat_id")
+  messageId Int      @map("message_id")
+  /// Tugmadagi support havolasi (https://t.me/<username>)
+  url       String
+  /// Xabarning to'liq inline klaviaturasi — tahrirlashda boshqa tugmalar saqlanadi
+  markup    Json
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@id([chatId, messageId])
+  @@index([url])
+  @@index([updatedAt])
+  @@map("support_button_messages")
+}
+
 model Text {
   key  String
   lang String @default("uz")
@@ -455,18 +472,21 @@ model AuditLog {
  * Admin panelga login qiladigan xodim (Telegram adminlaridan alohida)
  */
 model PanelUser {
-  id           Int       @id @default(autoincrement())
-  email        String    @unique
-  name         String
-  passwordHash String    @map("password_hash")
+  id                 Int       @id @default(autoincrement())
+  email              String    @unique
+  name               String
+  passwordHash       String    @map("password_hash")
   // Telegram hisobi: berilsa shu odam botda ham admin (xuddi shu rol bilan) — panel bilan sinxron
-  telegramId   BigInt?   @unique @map("telegram_id")
-  role         AdminRole @default(admin)
-  isActive     Boolean   @default(true) @map("is_active")
-  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  telegramId         BigInt?   @unique @map("telegram_id")
+  role               AdminRole @default(admin)
+  isActive           Boolean   @default(true) @map("is_active")
+  lastLoginAt        DateTime? @map("last_login_at") @db.Timestamptz
+  // "Parolni unutdim" (OTP) orqali kirgan — yangi parol o'rnatmaguncha panelning boshqa bo'limlari yopiq
+  mustChangePassword Boolean   @default(false) @map("must_change_password")
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
+  otps            AdminOtp[]
   broadcasts      Broadcast[]
   activityLogs    ActivityLog[]
   reviewedOrders  Order[]        @relation("OrderReviewedByPanel")
@@ -474,6 +494,22 @@ model PanelUser {
   campaignLinks   CampaignLink[]
 
   @@map("panel_users")
+}
+
+/// "Parolni unutdim": emailga yuborilgan bir martalik kod. Kodning o'zi saqlanmaydi — faqat bcrypt xeshi
+model AdminOtp {
+  id        Int       @id @default(autoincrement())
+  adminId   Int       @map("admin_id")
+  codeHash  String    @map("code_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  attempts  Int       @default(0)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  admin PanelUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, createdAt])
+  @@map("admin_otps")
 }
 
 model Broadcast {

@@ -1,4 +1,7 @@
-import { DEFAULT_LANG, fill, invalidateTexts, LOCALES, translate, type TextKey, type Vars } from "../i18n";
+import { DEFAULT_LANG, fill, invalidateTexts, LANGS, LOCALES, translate, type Lang, type TextKey, type Vars } from "../i18n";
+import { EDITABLE_TEXT_KEYS, TEXT_GROUPS, textMax, textMeta, type TextFormat, type TextMeta } from "../i18n/catalog";
+import { prisma } from "../db";
+import { telegramHtmlError, templateVars } from "../lib/telegramHtml";
 
 /**
  * Bot xabarlari (TZ Ilova A). Matnlar src/i18n/locales/* da, bu fayl eski importlar uchun fasad.
@@ -27,4 +30,96 @@ export type RejectReasonCode = keyof typeof REJECT_REASONS;
 
 export function isRejectReason(code: string): code is RejectReasonCode {
   return code in REJECT_REASONS;
+}
+
+// ---------- Admin paneldan tahrirlanadigan matnlar (texts jadvali: key + lang override) ----------
+
+export { EDITABLE_TEXT_KEYS };
+
+/** Standart matnlardagi o'zgaruvchilar (barcha tillar bo'yicha) — admin faqat shularni ishlata oladi */
+export function textVars(key: TextKey): string[] {
+  return [...new Set([...LANGS.flatMap((l) => templateVars(LOCALES[l][key])), ...(textMeta(key)?.meta.vars ?? [])])];
+}
+
+export function isEditableText(key: string): key is TextKey {
+  return textMeta(key) !== null;
+}
+
+export interface EditableTextItem {
+  key: TextKey;
+  group: string;
+  title: string;
+  hint: string | null;
+  format: TextFormat;
+  vars: string[];
+  required: string[];
+  max: number;
+  value: string;
+  default: string;
+  overridden: boolean;
+}
+
+/** Panel uchun: bo'limlar va har bir matnning joriy qiymati (override yoki standart) */
+export async function getEditableTexts(lang: Lang) {
+  const rows = await prisma.text.findMany({ where: { lang, key: { in: EDITABLE_TEXT_KEYS } } });
+  const overrides = new Map(rows.map((r) => [r.key, r.body]));
+  return {
+    lang,
+    groups: TEXT_GROUPS.map((g) => ({ id: g.id, title: g.title, description: g.description })),
+    items: TEXT_GROUPS.flatMap((g) =>
+      (Object.entries(g.keys) as [TextKey, TextMeta][]).map(([key, meta]): EditableTextItem => {
+        const def = LOCALES[lang][key];
+        const value = overrides.get(key) ?? def;
+        return {
+          key,
+          group: g.id,
+          title: meta.title,
+          hint: meta.hint ?? null,
+          format: meta.format ?? "html",
+          vars: textVars(key),
+          required: [...(meta.required ?? [])],
+          max: textMax(meta),
+          value,
+          default: def,
+          overridden: overrides.has(key) && value !== def,
+        };
+      }),
+    ),
+  };
+}
+
+/** Xato matni yoki null. html/part — Telegram HTML, popup — formatlashsiz qisqa matn */
+export function editableTextError(key: TextKey, body: string): string | null {
+  const found = textMeta(key);
+  if (!found) return "Bu matnni tahrirlab bo'lmaydi.";
+  const { meta } = found;
+  const max = textMax(meta);
+  if (!body.trim()) return "Matn bo'sh bo'lmasligi kerak.";
+  if (body.length > max) return `Matn ${max} belgidan oshmasligi kerak.`;
+  const allowed = textVars(key);
+  const used = templateVars(body);
+  const unknown = used.find((v) => !allowed.includes(v));
+  if (unknown) return `Noma'lum o'zgaruvchi {${unknown}}. ${allowed.length ? `Ruxsat etilgan: ${allowed.map((v) => `{${v}}`).join(", ")}.` : "Bu matnda o'zgaruvchi ishlatilmaydi."}`;
+  const missing = meta.required?.find((v) => !used.includes(v));
+  if (missing) return `Matnda {${missing}} bo'lishi shart — u avtomatik ravishda haqiqiy qiymat bilan almashtiriladi.`;
+  if (meta.format === "popup") return /<[a-zA-Z/]/.test(body) ? "Bu oynada formatlash (HTML teglar) ishlamaydi." : null;
+  return telegramHtmlError(body);
+}
+
+/**
+ * Saqlash: standartga teng bo'lsa override o'chiriladi (keyingi versiyalardagi standart matn
+ * o'zgarishlari ham kuchga kiradi). Kesh shu zahoti tozalanadi — bot keyingi xabarda yangi matnni ishlatadi.
+ */
+export async function saveEditableTexts(lang: Lang, values: Partial<Record<TextKey, string>>): Promise<TextKey[]> {
+  const changed: TextKey[] = [];
+  await prisma.$transaction(async (tx) => {
+    for (const [key, body] of Object.entries(values) as [TextKey, string | undefined][]) {
+      if (body === undefined || !isEditableText(key)) continue;
+      if (body === LOCALES[lang][key]) await tx.text.deleteMany({ where: { key, lang } });
+      else await tx.text.upsert({ where: { key_lang: { key, lang } }, create: { key, lang, body }, update: { body } });
+      changed.push(key);
+    }
+  });
+  invalidateTexts();
+  return changed;
 }

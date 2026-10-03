@@ -89,6 +89,16 @@ const schema = z.object({
   // Jo'natuvchi: "Bot Admin <no-reply@domen.uz>" yoki no-reply@domen.uz
   MAIL_FROM: z.string().trim().optional().or(z.literal("").transform(() => undefined)),
 
+  // --- CRM integratsiyasi ---
+  // Telefon ulashilganda lid shu manzilga POST qilinadi. URL ichidagi kalit maxfiy — faqat .env da.
+  // Bo'sh bo'lsa integratsiya o'chiq
+  CRM_WEBHOOK_URL: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith("https://"), "https:// bilan boshlanishi kerak")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+
   // --- Kurs darslari ---
   // true — dars videolarini forward qilish va saqlab olish taqiqlanadi (Telegram protect_content).
   // Standart: false — xaridor videoni ko'ra va yuklab ola oladi

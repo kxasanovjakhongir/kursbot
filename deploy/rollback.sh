@@ -6,7 +6,7 @@
 # Migratsiyalar QAYTARILMAYDI: loyihada migratsiyalar faqat qo'shuvchi (expand) — eski kod yangi
 # ustun/jadvallarni shunchaki ishlatmaydi. Ma'lumot o'chiradigan migratsiya bo'lsa: deploy/restore.sh.
 source "$(dirname "$0")/lib.sh"
-cd "$ROOT"
+cd "$ROOT" || exit 1
 STATE="$ROOT/.deploy"
 TARGET="${1:-$(cat "$STATE/previous" 2>/dev/null || true)}"
 [[ -n "$TARGET" ]] || die "qaysi versiyaga qaytish noma'lum (.deploy/previous yo'q). Mavjudlar: docker image ls darslik-bot"

@@ -1,8 +1,10 @@
 import { InlineKeyboard } from "grammy";
 import type { Product } from "@prisma/client";
 import type { BotContext } from "../context";
-import { withNav, withPagination } from "../keyboards";
+import { withPagination, withScreenButtons } from "../keyboards";
 import { prisma } from "../../db";
+import { joinParts } from "../../i18n";
+import { buttonSwitch } from "../../services/buttons";
 import { listLessons } from "../../services/lessons";
 import { componentProducts } from "../../services/products";
 import { courseNameFormatter, displayCourseName } from "../../services/settings";
@@ -23,7 +25,7 @@ export async function ownedCourseScreen(ctx: BotContext, product: Product, page 
   if (product.type === "bundle") {
     const name = await courseNameFormatter();
     for (const part of await componentProducts(product)) kb.text(name(part.title), CB.product(part.code)).row();
-    return { text: await ctx.t("course_bundle_owned", { mahsulot: name(product.title) }), keyboard: withNav(kb, ctx.lang, CB.catalog()) };
+    return { text: await ctx.t("course_bundle_owned", { mahsulot: name(product.title) }), keyboard: await withScreenButtons(kb, ctx.lang, "owned", CB.catalog()) };
   }
 
   const [lessons, grant] = await Promise.all([
@@ -36,11 +38,11 @@ export async function ownedCourseScreen(ctx: BotContext, product: Product, page 
   const offset = (p.page - 1) * PAGE_SIZE;
   p.items.forEach((l, i) => kb.text(lessonButton("▶️", offset + i + 1, l.title), CB.lesson(l.id)).row());
   withPagination(kb, p.page, p.pages, (n) => CB.lessons(product.code, n));
-  if (grant) kb.row().text(ctx.label("btn_channel_link"), CB.link(grant.id));
+  if (grant && (await buttonSwitch("owned"))("channel_link")) kb.row().text(ctx.label("btn_channel_link"), CB.link(grant.id));
 
   const hint = lessons.length ? await ctx.t("course_lessons_hint", { soni: lessons.length }) : await ctx.t("course_no_lessons");
-  const text = `${await ctx.t("course_owned", { mahsulot: await displayCourseName(product.title) })}\n\n${hint}`;
-  return { text, keyboard: withNav(kb, ctx.lang, CB.catalog()) };
+  const text = joinParts([await ctx.t("course_owned", { mahsulot: await displayCourseName(product.title) }), hint]);
+  return { text, keyboard: await withScreenButtons(kb, ctx.lang, "owned", CB.catalog()) };
 }
 
 /** Xarid qilinmagan kurs darslari: nomlari ko'rinadi (🔒), bosilsa — "avval kursni xarid qiling" */
@@ -51,9 +53,9 @@ export async function lockedLessonsScreen(ctx: BotContext, product: Product, pag
   const kb = new InlineKeyboard();
   p.items.forEach((l, i) => kb.text(lessonButton("🔒", offset + i + 1, l.title), CB.lesson(l.id)).row());
   withPagination(kb, p.page, p.pages, (n) => CB.lessons(product.code, n));
-  kb.row().text(ctx.label("btn_buy"), CB.buy(product.code));
+  if ((await buttonSwitch("lessons_locked"))("buy")) kb.row().text(ctx.label("btn_buy"), CB.buy(product.code));
   return {
     text: await ctx.t("lessons_title", { mahsulot: await displayCourseName(product.title), soni: lessons.length }),
-    keyboard: withNav(kb, ctx.lang, CB.product(product.code)),
+    keyboard: await withScreenButtons(kb, ctx.lang, "lessons_locked", CB.product(product.code)),
   };
 }

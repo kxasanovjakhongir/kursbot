@@ -44,6 +44,7 @@ export const en: Messages = {
   course_program: "🎓 <b>{mahsulot}</b> — program\n\n{v}",
   course_teacher: "👨‍🏫 <b>{mahsulot}</b> — teacher\n\n{v}",
   btn_buy: "✅ Get this textbook",
+  btn_ask: "💬 Ask a question",
   already_owned: "✅ You already own this textbook.\n\nYou can get the channel link again with the «🔗 Channel link» button on the course page.",
   bundle_partial: "You already own one of the textbooks in this bundle. The missing one:",
 

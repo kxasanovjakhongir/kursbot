@@ -23,6 +23,7 @@ import {
   ShieldAlert,
   ShoppingCart,
   SquareTerminal,
+  ToggleRight,
   UserCircle,
   Users,
   X,
@@ -61,6 +62,7 @@ const NAV: NavItem[] = [
   { to: "/errors", label: "Xatoliklar", icon: ShieldAlert, superOnly: true, badge: "errors" },
   { to: "/bot/settings", label: "Bot sozlamalari", icon: Settings, superOnly: true },
   { to: "/bot/texts", label: "Bot matnlari", icon: MessageSquareText, superOnly: true },
+  { to: "/bot/buttons", label: "Bot tugmalari", icon: ToggleRight, superOnly: true },
   { to: "/profile", label: "Profil", icon: UserCircle },
 ];
 

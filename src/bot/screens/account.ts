@@ -1,9 +1,10 @@
 import { InlineKeyboard } from "grammy";
 import type { NotificationKind } from "@prisma/client";
 import type { BotContext } from "../context";
-import { withNav, withPagination } from "../keyboards";
-import { hasTextOverride, LANG_NAMES, LANGS } from "../../i18n";
+import { withPagination, withScreenButtons } from "../keyboards";
+import { hasTextOverride, joinParts, LANG_NAMES, LANGS } from "../../i18n";
 import { escapeHtml, formatDate, formatPhone, formatShortDateTime, formatSum, stripHtml, truncate } from "../../lib/format";
+import { buttonSwitch } from "../../services/buttons";
 import { listNotifications } from "../../services/notifications";
 import { getSupportUrl } from "../../services/settings";
 import { displayName, userStats } from "../../services/users";
@@ -25,12 +26,11 @@ export async function profileScreen(ctx: BotContext): Promise<Screen> {
     buyurtmalar: stats.orders,
     jami: formatSum(stats.totalPaid),
   });
-  const kb = new InlineKeyboard()
-    .text(ctx.label("btn_change_phone"), CB.changePhone)
-    .text(ctx.label("btn_notifications"), CB.notifications())
-    .row()
-    .text(ctx.label("menu_settings"), CB.settings);
-  return { text, keyboard: withNav(kb, ctx.lang) };
+  const on = await buttonSwitch("profile");
+  const kb = new InlineKeyboard();
+  if (on("change_phone")) kb.text(ctx.label("btn_change_phone"), CB.changePhone);
+  if (on("notifications")) kb.text(ctx.label("btn_notifications"), CB.notifications());
+  return { text, keyboard: await withScreenButtons(kb, ctx.lang, "profile") };
 }
 
 /** ⚙️ Sozlamalar: til va yangiliklar obunasi */
@@ -40,18 +40,18 @@ export async function settingsScreen(ctx: BotContext): Promise<Screen> {
     til: LANG_NAMES[ctx.lang],
     yangiliklar: await ctx.t(user.newsEnabled ? "news_on" : "news_off"),
   });
-  const kb = new InlineKeyboard()
-    .text(ctx.label("btn_language"), CB.language)
-    .row()
-    .text(ctx.label(user.newsEnabled ? "btn_news_toggle_off" : "btn_news_toggle_on"), CB.toggleNews);
-  return { text, keyboard: withNav(kb, ctx.lang, CB.profile) };
+  const on = await buttonSwitch("settings");
+  const kb = new InlineKeyboard();
+  if (on("language")) kb.text(ctx.label("btn_language"), CB.language).row();
+  if (on("news")) kb.text(ctx.label(user.newsEnabled ? "btn_news_toggle_off" : "btn_news_toggle_on"), CB.toggleNews);
+  return { text, keyboard: await withScreenButtons(kb, ctx.lang, "settings", CB.profile) };
 }
 
 /** 🌐 Til tanlash — joriy til ✅ bilan */
 export async function languageScreen(ctx: BotContext): Promise<Screen> {
   const kb = new InlineKeyboard();
   for (const lang of LANGS) kb.text(`${LANG_NAMES[lang]}${lang === ctx.lang ? " ✅" : ""}`, CB.setLang(lang)).row();
-  return { text: await ctx.t("language_title"), keyboard: withNav(kb, ctx.lang, CB.settings) };
+  return { text: await ctx.t("language_title"), keyboard: await withScreenButtons(kb, ctx.lang, "language", CB.settings) };
 }
 
 /**
@@ -61,10 +61,8 @@ export async function languageScreen(ctx: BotContext): Promise<Screen> {
  */
 export async function helpScreen(ctx: BotContext): Promise<Screen> {
   const [url, help, customized] = await Promise.all([getSupportUrl(), ctx.t("help"), hasTextOverride(ctx.lang, "help")]);
-  const kb = new InlineKeyboard();
-  if (url) kb.url(ctx.label("btn_contact_admin"), url);
-  const text = url || customized ? help : `${help}\n\n${await ctx.t("support_not_configured")}`;
-  return { text, keyboard: withNav(kb, ctx.lang) };
+  const text = url || customized ? help : joinParts([help, await ctx.t("support_not_configured")]);
+  return { text, keyboard: await withScreenButtons(new InlineKeyboard(), ctx.lang, "help") };
 }
 
 const NOTIFICATION_ICON: Record<NotificationKind, string> = {
@@ -83,11 +81,11 @@ export async function notificationsScreen(ctx: BotContext, page = 1): Promise<Sc
   const { items, total } = await listNotifications(user.id, page, NOTIFICATIONS_PAGE_SIZE);
   const pages = Math.max(1, Math.ceil(total / NOTIFICATIONS_PAGE_SIZE));
   const kb = new InlineKeyboard();
-  if (total === 0) return { text: await ctx.t("notifications_empty"), keyboard: withNav(kb, ctx.lang, CB.profile) };
+  if (total === 0) return { text: await ctx.t("notifications_empty"), keyboard: await withScreenButtons(kb, ctx.lang, "notifications", CB.profile) };
 
   const lines = items.map(
     (n) => `${NOTIFICATION_ICON[n.kind]} <i>${formatShortDateTime(n.createdAt)}</i>\n${escapeHtml(truncate(stripHtml(n.text).replace(/\s+/g, " "), 160))}`,
   );
   withPagination(kb, Math.min(page, pages), pages, CB.notifications);
-  return { text: [await ctx.t("notifications_title"), "", lines.join("\n\n")].join("\n"), keyboard: withNav(kb, ctx.lang, CB.profile) };
+  return { text: [await ctx.t("notifications_title"), "", lines.join("\n\n")].join("\n"), keyboard: await withScreenButtons(kb, ctx.lang, "notifications", CB.profile) };
 }

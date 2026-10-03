@@ -53,6 +53,8 @@ export async function notifyUser(
   other?: SendOptions,
 ) {
   const sent = await sendToUser(api, user.telegramId, text, other);
+  // Paneldan o'chirilgan (bo'sh) xabar tarixga yozilmaydi
+  if (!text.trim()) return sent;
   await recordNotification(user.id, kind, text, !!sent);
   return sent;
 }

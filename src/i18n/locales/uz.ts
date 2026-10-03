@@ -50,6 +50,7 @@ export const uz = {
   course_program: "🎓 <b>{mahsulot}</b> — dastur\n\n{v}",
   course_teacher: "👨‍🏫 <b>{mahsulot}</b> — o'qituvchi\n\n{v}",
   btn_buy: "✅ Darslikni olaman",
+  btn_ask: "💬 Savol berish",
   already_owned: "✅ Siz bu darslikni olgansiz.\n\nKanal linkini kurs sahifasidagi «🔗 Kanal havolasi» tugmasi orqali qayta olishingiz mumkin.",
   bundle_partial: "Sizda to'plamdagi darsliklardan biri allaqachon bor. Yetishmayotgan darslik:",
 

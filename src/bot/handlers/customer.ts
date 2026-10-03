@@ -7,7 +7,7 @@ import { profileScreen } from "../screens/account";
 import { lockedLessonsScreen, ownedCourseScreen } from "../screens/lessons";
 import { CB, COURSE_SECTIONS, ID_RE, PAGE_RE } from "../ui/callbacks";
 import { render, renderNew } from "../ui/render";
-import { allLabels } from "../../i18n";
+import { allLabels, joinParts } from "../../i18n";
 import { parseStartPayload } from "../../lib/deeplink";
 import { normalizePhone } from "../../lib/phone";
 import { recordStart, setPhone, setLastProduct, displayName, markBlocked } from "../../services/users";
@@ -75,7 +75,7 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
     try {
       await ctx.replyWithVideo(product.videoFileId, {
         // Sarlavha + paneldan tahrirlanadigan tanishtiruv matni
-        caption: `${await ctx.t("intro_video_title", vars)}\n\n${await ctx.t("intro_video_text", vars)}`,
+        caption: joinParts([await ctx.t("intro_video_title", vars), await ctx.t("intro_video_text", vars)]) || undefined,
         parse_mode: "HTML",
         supports_streaming: true,
       });

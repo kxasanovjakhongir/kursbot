@@ -1,9 +1,11 @@
 import { InlineKeyboard } from "grammy";
 import type { Order, Product } from "@prisma/client";
 import type { BotContext } from "../context";
-import { withHelpButton, withNav, withPagination } from "../keyboards";
+import { withPagination, withScreenButtons } from "../keyboards";
 import { escapeHtml, formatDate, formatDateTime, formatMoney, formatSum, groupCard } from "../../lib/format";
 import { prisma } from "../../db";
+import { joinParts } from "../../i18n";
+import { buttonSwitch } from "../../services/buttons";
 import { listActiveProducts, ownedInactiveProducts, ownedProductIds } from "../../services/products";
 import { lessonCounts } from "../../services/lessons";
 import { courseNameFormatter, displayCourseName } from "../../services/settings";
@@ -27,7 +29,7 @@ export async function catalogScreen(ctx: BotContext, page = 1): Promise<Screen> 
   // Sotuvdan olingan, lekin sotib olingan kurslar ham ko'rinadi — darslar va kanal havolasi shu yerdan
   const products = [...active, ...(await ownedInactiveProducts(owned))];
   if (products.length === 0) {
-    return { text: await ctx.t("no_products"), keyboard: withNav(new InlineKeyboard(), ctx.lang) };
+    return { text: await ctx.t("no_products"), keyboard: await withScreenButtons(new InlineKeyboard(), ctx.lang, "catalog") };
   }
   const p = paginate(products, page, PAGE_SIZE);
   const kb = new InlineKeyboard();
@@ -37,8 +39,7 @@ export async function catalogScreen(ctx: BotContext, page = 1): Promise<Screen> 
     kb.text(`${owned.has(product.id) ? "✅ " : ""}${name(product.title)}${price}`, CB.product(product.code)).row();
   }
   withPagination(kb, p.page, p.pages, CB.catalog);
-  await withHelpButton(kb.row(), ctx.lang);
-  return { text: await ctx.t("choose_product"), keyboard: withNav(kb, ctx.lang) };
+  return { text: await ctx.t("choose_product"), keyboard: await withScreenButtons(kb, ctx.lang, "catalog") };
 }
 
 /** Mahsulot kartochkasi: tavsif, narx, "Olaman" va navigatsiya */
@@ -51,11 +52,16 @@ function courseSections(product: Product): CourseSection[] {
 const SECTION_LABEL = { about: "btn_course_about", price: "btn_course_price", program: "btn_course_program", teacher: "btn_course_teacher" } as const;
 
 export async function productScreen(ctx: BotContext, product: Product): Promise<Screen> {
-  const text = await ctx.t("product_caption", { mahsulot: await displayCourseName(product.title), tavsif: product.description }, { narx_qator: priceLine(product) });
+  // Tavsifi yo'q kursda nom va narx orasida ortiqcha bo'sh qator qolmaydi
+  const text = (await ctx.t("product_caption", { mahsulot: await displayCourseName(product.title), tavsif: product.description }, { narx_qator: priceLine(product) })).replace(
+    /\n{3,}/g,
+    "\n\n",
+  );
   const kb = new InlineKeyboard();
   // Kurs bo'limlari (ikki ustunda): 📚 Kurs haqida · 💰 Narxi · 🎓 Dastur · 👨‍🏫 O'qituvchi
+  const on = await buttonSwitch("product");
   const sections = courseSections(product);
-  if (sections.length > 1) {
+  if (on("sections") && sections.length > 1) {
     sections.forEach((s, i) => {
       kb.text(ctx.label(SECTION_LABEL[s]), CB.productInfo(product.code, s));
       if (i % 2 === 1) kb.row();
@@ -64,10 +70,10 @@ export async function productScreen(ctx: BotContext, product: Product): Promise<
   }
   // Kurs darslari (videolar) — xarid qilmaganlarga nomlari 🔒 bilan ko'rinadi
   const lessons = (await lessonCounts([product.id])).get(product.id) ?? 0;
-  if (lessons > 0) kb.text(ctx.label("btn_lessons", { soni: lessons }), CB.lessons(product.code)).row();
-  kb.text(ctx.label("btn_buy"), CB.buy(product.code));
+  if (on("lessons") && lessons > 0) kb.text(ctx.label("btn_lessons", { soni: lessons }), CB.lessons(product.code)).row();
+  if (on("buy")) kb.text(ctx.label("btn_buy"), CB.buy(product.code));
   // Kurs kartochkasida "⬅️ Orqaga" yo'q — faqat "🏠 Bosh menyu" (katalogga pastki «📚 Darsliklar» orqali)
-  return { text, keyboard: withNav(kb, ctx.lang) };
+  return { text, keyboard: await withScreenButtons(kb, ctx.lang, "product") };
 }
 
 /** Kurs bo'limi ekrani: matn va "Sotib olish" / "Orqaga (kursga)" */
@@ -85,7 +91,7 @@ export async function courseSectionScreen(ctx: BotContext, product: Product, sec
         product.audience && (await ctx.t("course_fact_audience", { v: product.audience })),
         product.benefits && (await ctx.t("course_fact_benefits", { v: product.benefits })),
       ].filter(Boolean);
-      text = [await ctx.t("course_about_title", vars), escapeHtml(product.description), facts.join("\n"), ...blocks].filter(Boolean).join("\n\n");
+      text = joinParts([await ctx.t("course_about_title", vars), escapeHtml(product.description), facts.join("\n"), ...blocks]);
       break;
     }
     case "price":
@@ -98,8 +104,9 @@ export async function courseSectionScreen(ctx: BotContext, product: Product, sec
       text = await ctx.t("course_teacher", { ...vars, v: product.teacher ?? "—" });
       break;
   }
-  const kb = new InlineKeyboard().text(ctx.label("btn_buy"), CB.buy(product.code)).row();
-  return { text, keyboard: withNav(kb, ctx.lang, CB.product(product.code)) };
+  const kb = new InlineKeyboard();
+  if ((await buttonSwitch("course_section"))("buy")) kb.text(ctx.label("btn_buy"), CB.buy(product.code));
+  return { text, keyboard: await withScreenButtons(kb, ctx.lang, "course_section", CB.product(product.code)) };
 }
 
 export type OrderWithProduct = Order & { product: Product };
@@ -112,7 +119,7 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   if (order.status === "receipt_sent") {
     return {
       text: await ctx.t("payment_under_review", { raqam: order.id.toString() }),
-      keyboard: withNav(new InlineKeyboard(), ctx.lang, CB.product(order.product.code)),
+      keyboard: await withScreenButtons(new InlineKeyboard(), ctx.lang, "payment", CB.product(order.product.code)),
     };
   }
   const card = order.cardId ? await prisma.card.findUnique({ where: { id: order.cardId } }) : null;
@@ -124,18 +131,19 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
     karta_egasi: card ? `${card.holder}${card.bank ? ` (${card.bank})` : ""}` : "—",
   };
   // Sarlavha (karta ma'lumoti) + paneldan tahrirlanadigan ko'rsatmalar; muddat — buyurtmaning o'zidan
-  let text = [
+  // Paneldan o'chirilgan yoki bo'sh qoldirilgan qismlar tushib qoladi
+  let text = joinParts([
     await ctx.t("payment_info", vars),
-    [await ctx.t("payment_step_1", vars), await ctx.t("payment_step_2", vars)].join("\n"),
+    joinParts([await ctx.t("payment_step_1", vars), await ctx.t("payment_step_2", vars)], "\n"),
     await ctx.t("payment_expires", { expires_at: formatDateTime(order.expiresAt) }),
-  ].join("\n\n");
+  ]);
   if (order.status === "rejected" && order.shortfall) {
     text += await ctx.t("payment_info_shortfall", { farq: formatSum(order.shortfall) });
   }
   const kb = new InlineKeyboard();
   // Bir bosishda karta raqami nusxalanadi — bank ilovasiga o'tishda qulay
-  if (card) kb.copyText(ctx.label("btn_copy_card"), card.number).row();
-  return { text, keyboard: withNav(kb, ctx.lang, CB.product(order.product.code)) };
+  if (card && (await buttonSwitch("payment"))("copy_card")) kb.copyText(ctx.label("btn_copy_card"), card.number);
+  return { text, keyboard: await withScreenButtons(kb, ctx.lang, "payment", CB.product(order.product.code)) };
 }
 
 /** ❓ Buyurtmani bekor qilishni tasdiqlash */
@@ -151,6 +159,6 @@ export async function cancelOrderConfirmScreen(ctx: BotContext, order: OrderWith
 export async function orderCancelledScreen(ctx: BotContext, orderId: bigint): Promise<Screen> {
   return {
     text: await ctx.t("order_cancelled", { raqam: orderId.toString() }),
-    keyboard: withNav(new InlineKeyboard().text(ctx.label("menu_products"), CB.catalog()), ctx.lang),
+    keyboard: await withScreenButtons(new InlineKeyboard(), ctx.lang, "order_cancelled"),
   };
 }

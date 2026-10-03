@@ -14,7 +14,8 @@ export function isNotModified(err: unknown): boolean {
 function sendOptions(screen: Screen) {
   return {
     parse_mode: "HTML" as const,
-    reply_markup: screen.keyboard,
+    // Paneldan barcha tugmalari o'chirilgan ekran — bo'sh klaviatura yuborilmaydi
+    reply_markup: screen.keyboard?.inline_keyboard.some((row) => row.length > 0) ? screen.keyboard : undefined,
     link_preview_options: { is_disabled: true },
   };
 }

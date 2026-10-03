@@ -409,11 +409,12 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     // Kurs kartochkasi: «Darslikni olaman» va «Bosh menyu» bor, «Orqaga» yo'q
     expect(kb.some((b) => b.callback_data === "nav:home")).toBe(true);
     expect(kb.some((b) => b.text === uz.btn_back || b.callback_data === "nav:cat:1")).toBe(false);
-    // «Savol berish» (support URL) tugmasi ham yo'q
+    // Support username sozlanmagan — «Savol berish» chiqmaydi; sozlangach «Darslikni olaman» yonida chiqadi
+    expect(kb.some((b) => b.url)).toBe(false);
     await setSetting("support_username", "my_support");
     calls = [];
     await send(callback("p:js"));
-    expect(lastButtons().some((b) => b.url)).toBe(false);
+    expect(lastButtons().find((b) => b.text === uz.btn_ask)?.url).toBe("https://t.me/my_support");
     expect([...kb, ...buttons(intro)].some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
     // Asosiy dars videosi yuborilmagan
     expect(calls.filter((c) => c.method === "sendVideo").map((c) => c.payload.video)).toEqual(["intro-js"]);

@@ -131,6 +131,40 @@ describe.skipIf(!enabled)("admin API", () => {
     expect((await request(app).get("/api/bot/settings").set(auth)).body.supportUsername).toBe("");
   });
 
+  it("bot tugmalari: faqat super admin, noma'lum tugma rad etiladi, holat saqlanadi", async () => {
+    const auth = { Authorization: `Bearer ${superToken}` };
+    type Screens = { id: string; buttons: { id: string; enabled: boolean }[] }[];
+    const enabled = (screens: Screens, id: string) => screens.flatMap((s) => s.buttons).find((b) => b.id === id)?.enabled;
+
+    expect((await request(app).get("/api/bot/buttons")).status).toBe(401);
+    const forbidden = await request(app).put("/api/bot/buttons").set("Authorization", `Bearer ${adminToken}`).send({ values: { "home.help": false } });
+    expect(forbidden.status).toBe(403);
+
+    const list = await request(app).get("/api/bot/buttons").set(auth);
+    expect(list.status).toBe(200);
+    expect(enabled(list.body.screens, "home.help")).toBe(true);
+    expect(enabled(list.body.screens, "product.ask")).toBe(true);
+
+    const off = await request(app).put("/api/bot/buttons").set(auth).send({ values: { "home.help": false } });
+    expect(off.status).toBe(200);
+    expect(enabled(off.body.screens, "home.help")).toBe(false);
+    expect(enabled(off.body.screens, "product.ask")).toBe(true);
+    expect(enabled((await request(app).get("/api/bot/buttons").set(auth)).body.screens, "home.help")).toBe(false);
+
+    expect((await request(app).put("/api/bot/buttons").set(auth).send({ values: { "no.such": false } })).status).toBe(400);
+
+    // Umumiy tugma boshqa ekranda standart holatda o'chiq — yoqsa bo'ladi; "reset" hammasini standartga qaytaradi
+    expect(enabled(off.body.screens, "catalog.ask")).toBe(false);
+    const added = await request(app).put("/api/bot/buttons").set(auth).send({ values: { "catalog.ask": true, "product.buy": false } });
+    expect(enabled(added.body.screens, "catalog.ask")).toBe(true);
+    expect(enabled(added.body.screens, "product.buy")).toBe(false);
+    expect((await request(app).post("/api/bot/buttons/reset").set("Authorization", `Bearer ${adminToken}`)).status).toBe(403);
+    const reset = await request(app).post("/api/bot/buttons/reset").set(auth);
+    expect(enabled(reset.body.screens, "home.help")).toBe(true);
+    expect(enabled(reset.body.screens, "catalog.ask")).toBe(false);
+    expect(enabled(reset.body.screens, "product.buy")).toBe(true);
+  });
+
   it("bot matnlari va kurs nomi limiti: faqat super admin, validatsiya, standartga qaytarish", async () => {
     const auth = { Authorization: `Bearer ${superToken}` };
     expect((await request(app).get("/api/bot/texts")).status).toBe(401);
@@ -138,7 +172,7 @@ describe.skipIf(!enabled)("admin API", () => {
     expect((await request(app).put("/api/bot/texts").set("Authorization", `Bearer ${adminToken}`).send({ lang: "uz", values: {} })).status).toBe(403);
 
     const initial = await request(app).get("/api/bot/texts?lang=uz").set(auth);
-    type Item = { key: string; value: string; default: string; group: string; vars: string[]; overridden: boolean };
+    type Item = { key: string; value: string; default: string; group: string; vars: string[]; overridden: boolean; disabled: boolean };
     const item = (body: { items: Item[] }, key: string) => body.items.find((i) => i.key === key)!;
     expect(item(initial.body, "payment_expires").value).toBe("⏳ Buyurtma {expires_at} gacha amal qiladi.");
     expect(item(initial.body, "help").group).toBe("help");
@@ -162,10 +196,25 @@ describe.skipIf(!enabled)("admin API", () => {
     expect(item(ok.body, "payment_step_1").vars).toEqual(expect.arrayContaining(["summa", "karta", "mahsulot", "raqam", "karta_egasi"]));
     expect(await prisma.text.findUnique({ where: { key_lang: { key: "payment_expires", lang: "uz" } } })).toMatchObject({ body: "⏳ {expires_at} gacha" });
 
-    for (const values of [{ payment_expires: "⏳ 06.10.2026 06:41 gacha" }, { payment_step_1: "" }, { payment_step_2: "<b>yopilmagan" }, { boshqa_kalit: "x" }, { btn_buy: "x" }, { help: "{noma_lum}" }, { error_stale_button: "<b>x</b>" }]) {
+    for (const values of [{ payment_step_2: "<b>yopilmagan" }, { boshqa_kalit: "x" }, { btn_buy: "x" }, { help: "{noma_lum}" }, { error_stale_button: "<b>x</b>" }]) {
       expect((await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", values })).status).toBe(400);
     }
     expect((await request(app).put("/api/bot/texts").set(auth).send({ lang: "de", values: {} })).status).toBe(400);
+
+    // Bo'sh matn ruxsat etilgan — xabar qismi o'chiriladi; majburiy o'zgaruvchisiz umumiy matn ham saqlanadi
+    const blank = await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", values: { payment_step_1: "   ", payment_expires: "⏳ Muddat cheklangan" } });
+    expect(blank.status).toBe(200);
+    expect(item(blank.body, "payment_step_1")).toMatchObject({ value: "", overridden: true, disabled: false });
+    expect(item(blank.body, "payment_expires").value).toBe("⏳ Muddat cheklangan");
+
+    // Yoqish/o'chirish: matn saqlanib qoladi; bo'sh matn yoqilsa — standartga qaytadi
+    expect((await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", enabled: { btn_buy: false } })).status).toBe(400);
+    const off = await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", enabled: { help: false } });
+    expect(item(off.body, "help")).toMatchObject({ disabled: true, value: item(initial.body, "help").value });
+    expect((await request(app).get("/api/bot/texts?lang=ru").set(auth)).body.items.find((i: Item) => i.key === "help").disabled).toBe(true);
+    const on = await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", enabled: { help: true, payment_step_1: true } });
+    expect(item(on.body, "help").disabled).toBe(false);
+    expect(item(on.body, "payment_step_1")).toMatchObject({ value: item(initial.body, "payment_step_1").default, overridden: false });
 
     // Standart matn saqlansa — override o'chiriladi
     await request(app).put("/api/bot/texts").set(auth).send({ lang: "uz", values: { payment_expires: item(initial.body, "payment_expires").default } });

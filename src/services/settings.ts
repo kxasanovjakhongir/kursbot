@@ -25,6 +25,8 @@ export const DEFAULT_SETTINGS = {
   // Kurs nomining botda (xabar va tugmalarda) ko'rinadigan maksimal uzunligi. 100 — mahsulot nomining
   // maksimal uzunligi, ya'ni standart holatda nom qisqartirilmaydi
   course_name_max_length: 100,
+  // Bot tugmalarining standartdan farq qiladigan holatlari: { "home.help": false } (services/buttons.ts)
+  button_states: {} as Record<string, boolean>,
   support_username: (config.SUPPORT_USERNAME ? normalizeTelegramUsername(config.SUPPORT_USERNAME) : null) as string | null,
 };
 

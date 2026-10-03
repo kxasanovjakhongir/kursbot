@@ -1,4 +1,4 @@
-import { DEFAULT_LANG, fill, invalidateTexts, LANGS, LOCALES, translate, type Lang, type TextKey, type Vars } from "../i18n";
+import { DEFAULT_LANG, DISABLED_TEXTS_KEY, fill, invalidateTexts, LANGS, LOCALES, translate, type Lang, type TextKey, type Vars } from "../i18n";
 import { EDITABLE_TEXT_KEYS, TEXT_GROUPS, textMax, textMeta, type TextFormat, type TextMeta } from "../i18n/catalog";
 import { prisma } from "../db";
 import { telegramHtmlError, templateVars } from "../lib/telegramHtml";
@@ -57,12 +57,20 @@ export interface EditableTextItem {
   value: string;
   default: string;
   overridden: boolean;
+  /** Paneldan o'chirilgan (barcha tillarda). Bo'sh saqlangan matn ham yuborilmaydi — `value` bo'sh bo'ladi */
+  disabled: boolean;
+}
+
+async function disabledTexts(): Promise<Set<string>> {
+  const row = await prisma.setting.findUnique({ where: { key: DISABLED_TEXTS_KEY } });
+  return new Set(Array.isArray(row?.value) ? row.value.map(String) : []);
 }
 
 /** Panel uchun: bo'limlar va har bir matnning joriy qiymati (override yoki standart) */
 export async function getEditableTexts(lang: Lang) {
   const rows = await prisma.text.findMany({ where: { lang, key: { in: EDITABLE_TEXT_KEYS } } });
   const overrides = new Map(rows.map((r) => [r.key, r.body]));
+  const disabled = await disabledTexts();
   return {
     lang,
     groups: TEXT_GROUPS.map((g) => ({ id: g.id, title: g.title, description: g.description })),
@@ -82,26 +90,29 @@ export async function getEditableTexts(lang: Lang) {
           value,
           default: def,
           overridden: overrides.has(key) && value !== def,
+          disabled: disabled.has(key),
         };
       }),
     ),
   };
 }
 
-/** Xato matni yoki null. html/part — Telegram HTML, popup — formatlashsiz qisqa matn */
+/**
+ * Xato matni yoki null. html/part — Telegram HTML, popup — formatlashsiz qisqa matn.
+ * Bo'sh matn ruxsat etilgan — bu xabar (yoki xabar qismi) o'chirilgan degani. `required` o'zgaruvchilar
+ * majburiy emas (panelda tavsiya sifatida ko'rsatiladi): admin butun matnni o'zi yozishi mumkin.
+ */
 export function editableTextError(key: TextKey, body: string): string | null {
   const found = textMeta(key);
   if (!found) return "Bu matnni tahrirlab bo'lmaydi.";
   const { meta } = found;
   const max = textMax(meta);
-  if (!body.trim()) return "Matn bo'sh bo'lmasligi kerak.";
+  if (!body.trim()) return null;
   if (body.length > max) return `Matn ${max} belgidan oshmasligi kerak.`;
   const allowed = textVars(key);
   const used = templateVars(body);
   const unknown = used.find((v) => !allowed.includes(v));
   if (unknown) return `Noma'lum o'zgaruvchi {${unknown}}. ${allowed.length ? `Ruxsat etilgan: ${allowed.map((v) => `{${v}}`).join(", ")}.` : "Bu matnda o'zgaruvchi ishlatilmaydi."}`;
-  const missing = meta.required?.find((v) => !used.includes(v));
-  if (missing) return `Matnda {${missing}} bo'lishi shart — u avtomatik ravishda haqiqiy qiymat bilan almashtiriladi.`;
   if (meta.format === "popup") return /<[a-zA-Z/]/.test(body) ? "Bu oynada formatlash (HTML teglar) ishlamaydi." : null;
   return telegramHtmlError(body);
 }
@@ -109,17 +120,45 @@ export function editableTextError(key: TextKey, body: string): string | null {
 /**
  * Saqlash: standartga teng bo'lsa override o'chiriladi (keyingi versiyalardagi standart matn
  * o'zgarishlari ham kuchga kiradi). Kesh shu zahoti tozalanadi — bot keyingi xabarda yangi matnni ishlatadi.
+ * Faqat bo'sh joydan iborat matn bo'sh satr sifatida saqlanadi (xabar o'chiriladi).
  */
 export async function saveEditableTexts(lang: Lang, values: Partial<Record<TextKey, string>>): Promise<TextKey[]> {
   const changed: TextKey[] = [];
   await prisma.$transaction(async (tx) => {
-    for (const [key, body] of Object.entries(values) as [TextKey, string | undefined][]) {
-      if (body === undefined || !isEditableText(key)) continue;
+    for (const [key, raw] of Object.entries(values) as [TextKey, string | undefined][]) {
+      if (raw === undefined || !isEditableText(key)) continue;
+      const body = raw.trim() ? raw : "";
       if (body === LOCALES[lang][key]) await tx.text.deleteMany({ where: { key, lang } });
       else await tx.text.upsert({ where: { key_lang: { key, lang } }, create: { key, lang, body }, update: { body } });
       changed.push(key);
     }
   });
+  invalidateTexts();
+  return changed;
+}
+
+/**
+ * Matnni (xabar yoki xabar qismini) yoqish/o'chirish — barcha tillar uchun. Yoqilganda shu tilda bo'sh
+ * saqlangan matn standartga qaytadi (aks holda yoqilgan xabar baribir bo'sh bo'lib qolardi).
+ */
+export async function setTextsEnabled(lang: Lang, values: Partial<Record<TextKey, boolean>>): Promise<string[]> {
+  const disabled = await disabledTexts();
+  const changed: string[] = [];
+  for (const [key, enabled] of Object.entries(values) as [TextKey, boolean | undefined][]) {
+    if (enabled === undefined || !isEditableText(key)) continue;
+    if (enabled) {
+      const empty = await prisma.text.deleteMany({ where: { key, lang, body: "" } });
+      if (!disabled.delete(key) && !empty.count) continue;
+    } else {
+      if (disabled.has(key)) continue;
+      disabled.add(key);
+    }
+    changed.push(`${key}: ${enabled ? "yoqildi" : "o'chirildi"}`);
+  }
+  if (changed.length) {
+    const value = [...disabled].filter(isEditableText).sort();
+    await prisma.setting.upsert({ where: { key: DISABLED_TEXTS_KEY }, create: { key: DISABLED_TEXTS_KEY, value }, update: { value } });
+  }
   invalidateTexts();
   return changed;
 }

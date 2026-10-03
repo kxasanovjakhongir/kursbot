@@ -49,6 +49,8 @@ export interface ExportSummary {
   revenue: number;
   /** Tanlangan filtrlar (hujjat sarlavhasida ko'rsatiladi) */
   filters: string[];
+  /** Fayl bo'laklarga ajratilgan bo'lsa: nechanchi qism va nechta qatorni o'z ichiga oladi */
+  part?: { index: number; of: number; from: number; to: number };
 }
 
 export interface ExportSource {
@@ -182,11 +184,35 @@ export async function userExportSource(filter: UserFilter, batchSize = EXPORT_BA
   return { summary, batches };
 }
 
+/**
+ * Ro'yxatning bir qismi (1 dan boshlab `index`-qism, jami `of` ta) — fayl hajmi chegaradan oshganda
+ * bo'laklab yuborish uchun. Statistika butun ro'yxat bo'yicha qoladi, sarlavhaga "Qism" qatori qo'shiladi.
+ */
+export function exportPart(source: ExportSource, index: number, of: number): ExportSource {
+  const size = Math.ceil(source.summary.total / of);
+  const skip = (index - 1) * size;
+  // Oxirgi qism — qolgan hammasi (eksport boshlangach qo'shilgan foydalanuvchilar ham tushib qolmaydi)
+  const take = index === of ? Infinity : size;
+  async function* batches(): AsyncGenerator<ExportRow[]> {
+    let seen = 0;
+    for await (const rows of source.batches()) {
+      const start = Math.max(0, skip - seen);
+      const end = Math.min(rows.length, skip + take - seen);
+      seen += rows.length;
+      if (start < end) yield start === 0 && end === rows.length ? rows : rows.slice(start, end);
+      if (seen >= skip + take) return;
+    }
+  }
+  const to = index === of ? source.summary.total : Math.min(skip + size, source.summary.total);
+  return { summary: { ...source.summary, part: { index, of, from: Math.min(skip + 1, to), to } }, batches };
+}
+
 /** Hujjat sarlavhasidagi statistika qatorlari (Word va PDF) */
 export function summaryLines(s: ExportSummary): [string, string][] {
   return [
     ["Eksport vaqti", `${formatDateTime(s.generatedAt)} (Toshkent)`],
     ["Filtr", s.filters.join("; ")],
+    ...(s.part ? [["Qism", `${s.part.index} / ${s.part.of} (${s.part.from}–${s.part.to}-qatorlar)`] satisfies [string, string]] : []),
     ["Foydalanuvchilar", String(s.total)],
     ["Kurs sotib olganlar", String(s.buyers)],
     ["Sotib olmaganlar", String(s.total - s.buyers)],

@@ -128,8 +128,9 @@ export async function rejectAndNotify(
     matn: code === "other" ? (extra ?? "") : "",
   });
   const kb = new InlineKeyboard();
-  if (reason.resend && order.attempts < settings.max_receipt_attempts) kb.text(label(lang, "btn_resend"), "resend").row();
-  kb.add((await contactAdminKeyboard(lang)).inline_keyboard[0][0]);
+  if (reason.resend && order.attempts < settings.max_receipt_attempts) kb.text(label(lang, "btn_resend"), "resend");
+  const contact = await contactAdminKeyboard(lang);
+  for (const row of contact?.inline_keyboard ?? []) kb.row(...row);
 
   const sent = await notifyUser(api, order.user, "warning", await translate(lang, "rejected", {}, { sabab: customerText }), { reply_markup: kb }).catch((err) => {
     logger.error({ err, orderId: orderId.toString() }, "rad etish xabari mijozga yuborilmadi");

@@ -4,8 +4,9 @@ import { z } from "zod";
 import { prisma } from "../../db";
 import { logActivity } from "../../services/activity";
 import { saveBotToken } from "../../services/botToken";
+import { isButtonId, listButtons, resetButtons, setButtons } from "../../services/buttons";
 import { COURSE_NAME_MAX_LENGTH_LIMIT, getSettings, setSetting } from "../../services/settings";
-import { editableTextError, getEditableTexts, isEditableText, saveEditableTexts } from "../../services/texts";
+import { editableTextError, getEditableTexts, isEditableText, saveEditableTexts, setTextsEnabled } from "../../services/texts";
 import { LANGS } from "../../i18n";
 import { normalizeTelegramUsername, TELEGRAM_USERNAME_ERROR } from "../../lib/telegramUsername";
 import { currentUser, requirePermission } from "../auth";
@@ -150,20 +151,51 @@ export function botRouter(rt: BotRuntime): Router {
   const textsSchema = z
     .object({
       lang: z.enum(LANGS, { errorMap: () => ({ message: "Til noto'g'ri" }) }),
-      values: z.record(z.string().max(4096)).refine((v) => Object.keys(v).length <= 200, "Juda ko'p matn"),
+      values: z.record(z.string().max(4096)).refine((v) => Object.keys(v).length <= 200, "Juda ko'p matn").default({}),
+      // Matnni yoqish/o'chirish (barcha tillarda). Bo'sh saqlangan matn o'z-o'zidan o'chirilgan hisoblanadi
+      enabled: z.record(z.boolean()).refine((v) => Object.keys(v).length <= 200, "Juda ko'p matn").default({}),
     })
     .superRefine((body, zctx) => {
       for (const [key, value] of Object.entries(body.values)) {
         const error = isEditableText(key) ? editableTextError(key, value) : "Bunday matn yo'q yoki uni tahrirlab bo'lmaydi.";
         if (error) zctx.addIssue({ code: "custom", path: [key], message: error });
       }
+      for (const key of Object.keys(body.enabled)) {
+        if (!isEditableText(key)) zctx.addIssue({ code: "custom", path: [key], message: "Bunday matn yo'q yoki uni tahrirlab bo'lmaydi." });
+      }
     });
 
   r.put("/texts", requirePermission("settings.manage"), async (req, res) => {
     const body = parseBody(textsSchema, req);
-    const changed = await saveEditableTexts(body.lang, body.values);
+    const changed = [...(await saveEditableTexts(body.lang, body.values)), ...(await setTextsEnabled(body.lang, body.enabled))];
     await logActivity(currentUser(req).id, "UPDATE_BOT_TEXTS", `Bot matnlari (${body.lang}): ${changed.join(", ") || "o'zgarish yo'q"}`, clientIp(req));
     res.json(await getEditableTexts(body.lang));
+  });
+
+  // ---------- Bot tugmalari: xabar ostidagi yordamchi tugmalarni yoqish/o'chirish ----------
+  r.get("/buttons", requirePermission("settings.manage"), async (_req, res) => {
+    res.json({ screens: await listButtons() });
+  });
+
+  const buttonsSchema = z.object({
+    values: z.record(z.boolean()).superRefine((v, zctx) => {
+      for (const id of Object.keys(v)) {
+        if (!isButtonId(id)) zctx.addIssue({ code: "custom", path: [id], message: "Bunday tugma yo'q." });
+      }
+    }),
+  });
+
+  r.put("/buttons", requirePermission("settings.manage"), async (req, res) => {
+    const { values } = parseBody(buttonsSchema, req);
+    const changed = await setButtons(values);
+    await logActivity(currentUser(req).id, "UPDATE_BOT_BUTTONS", `Bot tugmalari: ${changed.join(", ") || "o'zgarish yo'q"}`, clientIp(req));
+    res.json({ screens: await listButtons() });
+  });
+
+  r.post("/buttons/reset", requirePermission("settings.manage"), async (req, res) => {
+    await resetButtons();
+    await logActivity(currentUser(req).id, "UPDATE_BOT_BUTTONS", "Bot tugmalari: standart holatga qaytarildi", clientIp(req));
+    res.json({ screens: await listButtons() });
   });
 
   r.put("/maintenance", requirePermission("settings.manage"), async (req, res) => {

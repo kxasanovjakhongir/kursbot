@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { Api, InlineKeyboard, Keyboard } from "grammy";
+import { EMPTY_TEXT_PLACEHOLDER, installEmptyTextGuard } from "../src/bot/emptyText";
 import { parseStartPayload } from "../src/lib/deeplink";
 import { normalizePhone } from "../src/lib/phone";
 import { formatSum, formatShortDateTime, isWorkingTime, maskCard, formatPhone } from "../src/lib/format";
@@ -10,6 +12,8 @@ import { telegramHtmlError } from "../src/lib/telegramHtml";
 import { editableTextError } from "../src/services/texts";
 import { uz as uzTexts } from "../src/i18n/locales/uz";
 import { EDITABLE_TEXT_KEYS } from "../src/i18n/catalog";
+import { exportPart, summaryLines, type ExportRow, type ExportSource } from "../src/services/export/rows";
+import { exportFileName } from "../src/services/export";
 
 describe("deep link (TZ 5.1)", () => {
   it("mahsulot va manbani ajratadi", () => {
@@ -118,9 +122,12 @@ describe("tahrirlanadigan bot matnlari", () => {
       expect(editableTextError(key, uzTexts[key])).toBeNull();
     }
   });
-  it("bo'sh, {expires_at} siz, noma'lum o'zgaruvchi va buzuq HTML rad etiladi", () => {
-    expect(editableTextError("payment_step_1", "  ")).toMatch(/bo'sh/);
-    expect(editableTextError("payment_expires", "⏳ Buyurtma 06.10.2026 06:41 gacha amal qiladi.")).toMatch(/\{expires_at\}/);
+  it("bo'sh matn (xabar o'chiriladi) va {expires_at} siz matn ruxsat etilgan", () => {
+    expect(editableTextError("payment_step_1", "  ")).toBeNull();
+    expect(editableTextError("payment_expires", "")).toBeNull();
+    expect(editableTextError("payment_expires", "⏳ Buyurtma 06.10.2026 06:41 gacha amal qiladi.")).toBeNull();
+  });
+  it("noma'lum o'zgaruvchi va buzuq HTML rad etiladi", () => {
     expect(editableTextError("payment_step_1", "{nimadir} ga o'tkazing")).toMatch(/Noma'lum/);
     expect(editableTextError("intro_video_text", "a".repeat(801))).toMatch(/800/);
     expect(telegramHtmlError("<b>qalin")).toMatch(/yopilmagan/);
@@ -141,5 +148,76 @@ describe("bot matnlari katalogi", () => {
   });
   it("barcha standart matnlar o'z qoidalariga mos", () => {
     for (const key of EDITABLE_TEXT_KEYS) expect([key, editableTextError(key, uzTexts[key])]).toEqual([key, null]);
+  });
+});
+
+describe("bo'sh matn himoyasi (paneldan o'chirilgan xabarlar)", () => {
+  const setup = () => {
+    const calls: { method: string; payload: Record<string, unknown> }[] = [];
+    const api = new Api("1:test");
+    // Eng ichki transformer — tarmoq o'rniga chaqiruvni yozib oladi
+    api.config.use((_prev, method, payload) => {
+      calls.push({ method, payload: payload as Record<string, unknown> });
+      return Promise.resolve({ ok: true, result: method === "sendMessage" ? { message_id: 5, chat: { id: 1 } } : true } as never);
+    });
+    installEmptyTextGuard(api);
+    return { api, calls };
+  };
+
+  it("tugmasiz bo'sh xabar yuborilmaydi, oddiy xabar o'zgarmaydi", async () => {
+    const { api, calls } = setup();
+    expect((await api.sendMessage(1, "")).message_id).toBe(0);
+    expect((await api.sendMessage(1, "<b> </b>", { parse_mode: "HTML" })).message_id).toBe(0);
+    expect(await api.editMessageText(1, 7, "")).toBe(true);
+    expect(calls).toEqual([]);
+    expect((await api.sendMessage(1, "Salom")).message_id).toBe(5);
+    expect(calls[0].payload.text).toBe("Salom");
+  });
+
+  it("tugmali bo'sh xabar 👇 bilan yuboriladi; bo'sh popup matnsiz javob beradi", async () => {
+    const { api, calls } = setup();
+    await api.sendMessage(1, "", { reply_markup: new InlineKeyboard().text("Kurs", "p:1") });
+    await api.sendMessage(1, "", { reply_markup: new Keyboard().text("Menyu").resized() });
+    await api.editMessageText(1, 7, "", { reply_markup: new InlineKeyboard().text("Orqaga", "nav:home") });
+    expect(calls.map((c) => c.payload.text)).toEqual([EMPTY_TEXT_PLACEHOLDER, EMPTY_TEXT_PLACEHOLDER, EMPTY_TEXT_PLACEHOLDER]);
+    // Tugmasi yo'q bo'sh klaviatura — xabar yuborilmaydi
+    await api.sendMessage(1, "", { reply_markup: new InlineKeyboard() });
+    expect(calls).toHaveLength(3);
+    await api.answerCallbackQuery("q1", { text: "", show_alert: true });
+    expect(calls[3]).toMatchObject({ method: "answerCallbackQuery" });
+    expect(calls[3].payload).not.toHaveProperty("text");
+    expect(calls[3].payload).not.toHaveProperty("show_alert");
+  });
+});
+
+describe("eksportni qismlarga bo'lish", () => {
+  const source = (total: number, batch: number): ExportSource => ({
+    summary: { generatedAt: new Date("2026-10-01T10:30:00Z"), total, buyers: 0, paidOrders: 0, revenue: 0, filters: [] },
+    async *batches() {
+      for (let i = 0; i < total; i += batch) yield Array.from({ length: Math.min(batch, total - i) }, (_, j) => ({ id: String(i + j + 1) }) as ExportRow);
+    },
+  });
+  const ids = async (s: ExportSource) => {
+    const out: number[] = [];
+    for await (const rows of s.batches()) out.push(...rows.map((r) => Number(r.id)));
+    return out;
+  };
+
+  it("ikki qism butun ro'yxatni takrorsiz va tushirib qoldirmasdan qoplaydi", async () => {
+    for (const [total, batch] of [[10, 3], [11, 4], [1, 5], [7, 7], [1000, 500]] as const) {
+      const [a, b] = [await ids(exportPart(source(total, batch), 1, 2)), await ids(exportPart(source(total, batch), 2, 2))];
+      expect([...a, ...b]).toEqual(Array.from({ length: total }, (_, i) => i + 1));
+      expect(a.length).toBe(Math.ceil(total / 2));
+    }
+    expect(await ids(exportPart(source(0, 5), 2, 2))).toEqual([]);
+  });
+
+  it("sarlavhada qism va qatorlar oralig'i, fayl nomida qism raqami", () => {
+    const part = exportPart(source(11, 4), 2, 2);
+    expect(part.summary.total).toBe(11);
+    expect(summaryLines(part.summary)).toContainEqual(["Qism", "2 / 2 (7–11-qatorlar)"]);
+    expect(summaryLines(source(11, 4).summary).some(([k]) => k === "Qism")).toBe(false);
+    expect(exportFileName("pdf", new Date("2026-10-01T10:30:00Z"), 2)).toBe("users-2026-10-01-1530-2qism.pdf");
+    expect(exportFileName("pdf", new Date("2026-10-01T10:30:00Z"))).toBe("users-2026-10-01-1530.pdf");
   });
 });

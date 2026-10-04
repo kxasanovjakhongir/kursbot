@@ -60,12 +60,32 @@ Pastki menyu: **📚 Darsliklar · 💬 Yordam**. Adminlarda qo'shimcha **🛠 A
 ```
 📚 Darsliklar → kurs → 🎥 tanishtiruv videosi (izohida tavsif va narx) → ✅ Darslikni olaman
 → to'lov (karta) → chek → admin tasdiqlaydi → "To'lov muvaffaqiyatli" + 📚 Kursni boshlash → darslar
+                ↘ yoki Payme / Click → to'lov avtomatik tasdiqlanadi (admin tekshiruvisiz) ↗
 ```
 
 - **Tanishtiruv videosi** (`products.video_file_id`) — ochiq: kursni sotib olmaganlar ham ko'radi. Panel → Mahsulotlar → video.
 - **Kurs darslari** (`lessons`) — faqat faol kirishi (`access_grants`) bor xaridorga yuboriladi. Sotib olmaganlar dars nomlarini 🔒 bilan ko'radi.
 - Sotib olingan kurs sahifasida: darslar ro'yxati va **🔗 Kanal havolasi** (yopiq kanal linkini qayta olish).
 - Sotuvdan olingan kurs xaridorlarning katalogida ✅ bilan qoladi.
+
+## Onlayn to'lov: Payme va Click
+
+`.env` da sozlansa, to'lov ekranida **«💳 Payme orqali to'lash»** / **«💳 Click orqali to'lash»** tugmalari chiqadi.
+To'lov tushishi bilan buyurtma avtomatik tasdiqlanadi (`payment_method = payme | click`), kanal linki yuboriladi va admin guruhiga xabar keladi.
+Karta + chek usuli ham ishlashda davom etadi; faol karta bo'lmasa — buyurtma faqat onlayn to'lov bilan yaratiladi.
+
+| Tizim | Kabinetda ko'rsatiladigan URL | `.env` |
+|---|---|---|
+| Payme (Merchant API) | `https://<domen>/api/payments/payme` | `PAYME_MERCHANT_ID`, `PAYME_KEY`, `PAYME_ACCOUNT_FIELD` (standart `order_id`), `PAYME_TEST_MODE` |
+| Click (Shop API) | Prepare: `https://<domen>/api/payments/click/prepare` · Complete: `https://<domen>/api/payments/click/complete` | `CLICK_SERVICE_ID`, `CLICK_MERCHANT_ID`, `CLICK_SECRET_KEY` |
+
+- **Payme**: kassada hisob maydoni `order_id` (buyurtma raqami) bo'lishi kerak. Avval `PAYME_TEST_MODE=true` va test kaliti bilan
+  [sandbox](https://test.paycom.uz) testlaridan o'ting. Fiskal chek kerak bo'lsa `PAYME_IKPU` (MXIK) va `PAYME_PACKAGE_CODE` ni to'ldiring.
+- **Click**: `merchant_trans_id` = buyurtma raqami. Imzo `CLICK_SECRET_KEY` bilan tekshiriladi.
+- Bitta buyurtmaga bir vaqtda faqat bitta kutilayotgan va bitta to'langan tranzaksiya bo'ladi (bazadagi unique indekslar).
+- Payme to'langan tranzaksiyani bekor qilsa (pul qaytarilsa) — buyurtma `refunded`, kanalga kirish yopiladi, mijozga xabar boradi.
+- Ikki marta to'lov (masalan, chek ham tasdiqlangan) bo'lsa — admin guruhiga «pulni qaytaring» ogohlantirishi keladi.
+- Tugmalarni Panel → Bot tugmalari → «To'lov ma'lumoti» bo'limidan o'chirish mumkin. Kurs «Narxi» matnini ham (Bot matnlari) onlayn to'lovga moslang.
 
 ## Kampaniya linklari (reklama deep link)
 
@@ -325,6 +345,8 @@ Barcha marshrutlar `/api` ostida. `auth/login` dan tashqari hammasi `Authorizati
 | GET, POST, PUT, DELETE | `/admins[/:id]` | SUPER_ADMIN |
 | GET | `/activity-logs` | SUPER_ADMIN |
 | GET | `/errors` (`status=open\|resolved\|all`, `q`), `/errors/count`, `/errors/:id` · POST `/errors/:id/resolve`, `/errors/:id/reopen`, `/errors/resolve-all` · DELETE `/errors/resolved` | SUPER_ADMIN |
+
+To'lov tizimlari uchun ochiq endpointlar (JWT yo'q): `POST /payments/payme` (Basic auth), `POST /payments/click/prepare`, `POST /payments/click/complete` (MD5 imzo) — yuqoridagi «Onlayn to'lov» bo'limiga qarang.
 
 Xatolar har doim `{ "error": "...", "details"?: {...} }` shaklida, mos HTTP status bilan qaytadi.
 

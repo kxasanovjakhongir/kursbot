@@ -67,7 +67,11 @@ const SCREENS = [
     back: true,
     own: [{ id: "channel_link", key: "btn_channel_link", hint: "Yopiq kanalga havolani qayta olish" }],
   },
-  { id: "payment", title: "To'lov ma'lumoti", on: ["ask", "home"], back: true, own: [{ id: "copy_card", key: "btn_copy_card" }] },
+  { id: "payment", title: "To'lov ma'lumoti", on: ["ask", "home"], back: true, own: [
+      { id: "pay_payme", key: "btn_pay_payme", hint: "Payme sozlangan bo'lsa (.env)" },
+      { id: "pay_click", key: "btn_pay_click", hint: "Click sozlangan bo'lsa (.env)" },
+      { id: "copy_card", key: "btn_copy_card" },
+    ] },
   { id: "order_cancelled", title: "Buyurtma bekor qilindi", on: ["products", "home"] },
   { id: "help", title: "💬 Yordam ekrani", on: ["contact", "home"], self: "help" },
   {

@@ -10,6 +10,10 @@ import { listActiveProducts, ownedInactiveProducts, ownedProductIds } from "../.
 import { lessonCounts } from "../../services/lessons";
 import { courseNameFormatter, displayCourseName } from "../../services/settings";
 import { CB, type CourseSection } from "../ui/callbacks";
+import { clickEnabled, paymeEnabled } from "../../config";
+import { paymeCheckoutUrl } from "../../services/payments/payme";
+import { clickCheckoutUrl } from "../../services/payments/click";
+import { returnUrl } from "../../services/payments/common";
 import { paginate, type Screen } from "../ui/render";
 
 const PAGE_SIZE = 8;
@@ -130,19 +134,36 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
     karta: card ? groupCard(card.number) : "—",
     karta_egasi: card ? `${card.holder}${card.bank ? ` (${card.bank})` : ""}` : "—",
   };
+  const on = await buttonSwitch("payment");
+  const back = returnUrl(ctx.me?.username);
+  const online = [
+    paymeEnabled() && on("pay_payme") && { label: ctx.label("btn_pay_payme"), url: paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }) },
+    clickEnabled() && on("pay_click") && { label: ctx.label("btn_pay_click"), url: clickCheckoutUrl(order.id, order.amount, { returnUrl: back }) },
+  ].filter((b): b is { label: string; url: string } => !!b);
+
   // Sarlavha (karta ma'lumoti) + paneldan tahrirlanadigan ko'rsatmalar; muddat — buyurtmaning o'zidan
-  // Paneldan o'chirilgan yoki bo'sh qoldirilgan qismlar tushib qoladi
-  let text = joinParts([
-    await ctx.t("payment_info", vars),
-    joinParts([await ctx.t("payment_step_1", vars), await ctx.t("payment_step_2", vars)], "\n"),
-    await ctx.t("payment_expires", { expires_at: formatDateTime(order.expiresAt) }),
-  ]);
+  // Paneldan o'chirilgan yoki bo'sh qoldirilgan qismlar tushib qoladi.
+  // Karta yo'q (faqat onlayn to'lov) — karta qatorlarisiz sarlavha
+  let text = card
+    ? joinParts([
+        await ctx.t("payment_info", vars),
+        joinParts([await ctx.t("payment_step_1", vars), await ctx.t("payment_step_2", vars)], "\n"),
+        online.length ? await ctx.t("payment_online_hint", vars) : "",
+        await ctx.t("payment_expires", { expires_at: formatDateTime(order.expiresAt) }),
+      ])
+    : joinParts([
+        await ctx.t("payment_info_online", vars),
+        await ctx.t("payment_step_online", vars),
+        await ctx.t("payment_expires", { expires_at: formatDateTime(order.expiresAt) }),
+      ]);
   if (order.status === "rejected" && order.shortfall) {
     text += await ctx.t("payment_info_shortfall", { farq: formatSum(order.shortfall) });
   }
   const kb = new InlineKeyboard();
+  // Payme / Click: to'lov sahifasi (buyurtma raqami va summa havolaning ichida)
+  for (const b of online) kb.url(b.label, b.url).row();
   // Bir bosishda karta raqami nusxalanadi — bank ilovasiga o'tishda qulay
-  if (card && (await buttonSwitch("payment"))("copy_card")) kb.copyText(ctx.label("btn_copy_card"), card.number);
+  if (card && on("copy_card")) kb.copyText(ctx.label("btn_copy_card"), card.number);
   return { text, keyboard: await withScreenButtons(kb, ctx.lang, "payment", CB.product(order.product.code)) };
 }
 

@@ -58,9 +58,18 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
     await syncCards(api, orderId, clicked);
     return false;
   }
-  const order = (await getOrderFull(orderId))!;
-  await trackEvent(order.userId, "approved", { orderId: orderId.toString(), product: order.product.code });
   await syncCards(api, orderId, clicked);
+  await deliverApproved(api, orderId);
+  return true;
+}
+
+/**
+ * Tasdiqlangan (to'langan) buyurtma bo'yicha: kanal(lar)ga kirish beriladi va mijozga xabar yuboriladi.
+ * Admin tasdiqlashi ham, onlayn to'lov (Payme / Click) ham shuni chaqiradi.
+ */
+export async function deliverApproved(api: Api, orderId: bigint): Promise<void> {
+  const order = (await getOrderFull(orderId))!;
+  await trackEvent(order.userId, "approved", { orderId: orderId.toString(), product: order.product.code, method: order.paymentMethod });
 
   let grants: Awaited<ReturnType<typeof grantAccess>> = [];
   try {
@@ -97,7 +106,6 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
   if (!sent) {
     await sendToAdminGroup(api, `⚠️ Buyurtma #${orderId}: mijozga xabar yetkazilmadi (botni bloklagan yoki chat topilmadi). Link botdagi kurs sahifasida («📚 Darsliklar» → kurs → «🔗 Kanal havolasi»).`).catch(() => undefined);
   }
-  return true;
 }
 
 /** Rad etish (TZ 7.3). extra: "short" uchun yetishmayotgan summa, "other" uchun erkin matn */

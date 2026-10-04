@@ -146,6 +146,10 @@ export function ordersRouter(rt: BotRuntime): Router {
         reviewedByPanel: { select: { name: true } },
         cancelledBy: { select: { name: true } },
         receipts: { select: { id: true, fileType: true, isDuplicate: true, createdAt: true }, orderBy: { id: "asc" } },
+        transactions: {
+          select: { id: true, provider: true, externalId: true, state: true, amount: true, createdAt: true, performedAt: true, cancelledAt: true },
+          orderBy: { id: "asc" },
+        },
       },
     });
     if (!order) throw new HttpError(404, "Buyurtma topilmadi");

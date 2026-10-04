@@ -252,6 +252,8 @@ model Order {
   receipts        Receipt[]
   grants          AccessGrant[]
   reminders       Reminder[]
+  // Onlayn to'lov urinishlari (Payme / Click)
+  transactions    PaymentTransaction[]
   // Admin panel: buyurtmalar ro'yxati (status filtri bilan va filtrsiz, yangilari birinchi)
   link            CampaignLink? @relation(fields: [linkId], references: [id], onDelete: SetNull)
 
@@ -263,6 +265,37 @@ model Order {
   @@index([paidAt])
   @@index([createdAt])
   @@map("orders")
+}
+
+/// Payme / Click tranzaksiyasi. state: 1 — yaratilgan (kutilmoqda), 2 — to'langan,
+/// -1 — to'lovdan oldin bekor qilingan, -2 — to'lovdan keyin bekor qilingan (pul qaytarilgan).
+/// Payme holatlari bilan bir xil; Click ham shu qiymatlardan foydalanadi (prepare=1, complete=2, xato=-1).
+model PaymentTransaction {
+  id           BigInt        @id @default(autoincrement())
+  provider     PaymentMethod
+  // Payme: params.id; Click: click_trans_id
+  externalId   String        @map("external_id")
+  orderId      BigInt        @map("order_id")
+  // So'mda (Payme tiyinda yuboradi — 100 ga bo'linib saqlanadi)
+  amount       Int
+  state        Int           @default(1)
+  // Payme bekor qilish sababi (1–10) yoki Click xato kodi
+  reason       Int?
+  // Payme: params.time (provayder tizimidagi yaratilish vaqti, ms). GetStatement shu bo'yicha filtrlaydi
+  providerTime BigInt?       @map("provider_time")
+  performedAt  DateTime?     @map("performed_at") @db.Timestamptz
+  cancelledAt  DateTime?     @map("cancelled_at") @db.Timestamptz
+  // Click: click_paydoc_id va boshqa qo'shimcha maydonlar
+  meta         Json?
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@unique([provider, externalId])
+  @@index([orderId])
+  @@index([provider, providerTime])
+  @@map("payment_transactions")
 }
 
 model Receipt {

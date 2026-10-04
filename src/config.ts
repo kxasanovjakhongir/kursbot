@@ -19,6 +19,17 @@ const optionalId = z
   .refine((s) => !s?.trim() || /^-?\d{1,20}$/.test(s.trim()), "raqamli chat ID bo'lishi kerak (masalan -1001234567890)")
   .transform((s) => (s && s.trim() ? BigInt(s.trim()) : undefined));
 
+const optionalStr = z
+  .string()
+  .trim()
+  .optional()
+  .transform((s) => (s ? s : undefined));
+
+const boolFlag = z
+  .enum(["true", "false", "1", "0", ""])
+  .optional()
+  .transform((v) => v === "true" || v === "1");
+
 // Spetsifikatsiyadagi nom (TELEGRAM_BOT_TOKEN) ham qabul qilinadi
 process.env.BOT_TOKEN ??= process.env.TELEGRAM_BOT_TOKEN;
 
@@ -99,6 +110,29 @@ const schema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
 
+  // --- Onlayn to'lov: Payme (Merchant API) ---
+  // Kabinet (merchant.paycom.uz) → kassa ID va kalit. Ikkalasi bo'lsa Payme yoqiladi
+  PAYME_MERCHANT_ID: optionalStr,
+  // Kassa kaliti (test rejimida — test kaliti). Payme so'rovlari "Basic Paycom:<kalit>" bilan tekshiriladi
+  PAYME_KEY: optionalStr,
+  // Kassadagi hisob maydoni nomi (kabinetda "order_id" deb sozlang)
+  PAYME_ACCOUNT_FIELD: z
+    .string()
+    .regex(/^[a-z_][a-z0-9_]{0,31}$/i, "lotin harflari, raqam va _")
+    .default("order_id"),
+  // true — checkout.test.paycom.uz (sandbox)
+  PAYME_TEST_MODE: boolFlag,
+  // Fiskal chek (OFD): MXIK (IKPU) kodi va o'lchov birligi kodi. Berilsa CheckPerformTransaction detail qaytaradi
+  PAYME_IKPU: optionalStr,
+  PAYME_PACKAGE_CODE: optionalStr,
+  PAYME_VAT_PERCENT: z.coerce.number().int().min(0).max(100).default(0),
+
+  // --- Onlayn to'lov: Click (Shop API) ---
+  // Kabinet (merchant.click.uz) → Service ID, Merchant ID va Secret key. Uchalasi bo'lsa Click yoqiladi
+  CLICK_SERVICE_ID: optionalStr,
+  CLICK_MERCHANT_ID: optionalStr,
+  CLICK_SECRET_KEY: optionalStr,
+
   // --- Kurs darslari ---
   // true — dars videolarini forward qilish va saqlab olish taqiqlanadi (Telegram protect_content).
   // Standart: false — xaridor videoni ko'ra va yuklab ola oladi
@@ -126,3 +160,10 @@ function load() {
 
 export const config = load();
 export type Config = typeof config;
+
+/** Payme sozlangan (kassa ID va kalit bor) */
+export const paymeEnabled = (): boolean => !!(config.PAYME_MERCHANT_ID && config.PAYME_KEY);
+/** Click sozlangan (service ID, merchant ID va secret key bor) */
+export const clickEnabled = (): boolean => !!(config.CLICK_SERVICE_ID && config.CLICK_MERCHANT_ID && config.CLICK_SECRET_KEY);
+/** Kamida bitta onlayn to'lov tizimi yoqilgan — bunda karta bo'lmasa ham buyurtma yaratiladi */
+export const onlinePaymentsEnabled = (): boolean => paymeEnabled() || clickEnabled();

@@ -260,7 +260,12 @@ export interface Order {
   product: { title: string; code: string };
 }
 
+export type PaymentMethod = "card" | "payme" | "click";
+
 export interface OrderDetail extends Order {
+  paymentMethod: PaymentMethod;
+  /** Payme / Click tranzaksiyalari. state: 1 kutilmoqda, 2 to'langan, -1 bekor, -2 qaytarilgan */
+  transactions: { id: string; provider: PaymentMethod; externalId: string; state: number; amount: number; createdAt: string; performedAt: string | null; cancelledAt: string | null }[];
   reviewedAt: string | null;
   reviewedBy: { name: string | null } | null;
   reviewedByPanel: { name: string } | null;

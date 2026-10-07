@@ -35,8 +35,7 @@ export async function catalogScreen(ctx: BotContext, page = 1): Promise<Screen> 
   const kb = new InlineKeyboard();
   const name = await courseNameFormatter();
   for (const product of p.items) {
-    const price = product.price > 0 ? ` — ${formatSum(product.price)}` : "";
-    kb.text(`${owned.has(product.id) ? "✅ " : ""}${name(product.title)}${price}`, CB.product(product.code)).row();
+    kb.text(`${owned.has(product.id) ? "✅ " : ""}${name(product.title)}`, CB.product(product.code)).row();
   }
   withPagination(kb, p.page, p.pages, CB.catalog);
   return { text: await ctx.t("choose_product"), keyboard: await withScreenButtons(kb, ctx.lang, "catalog") };

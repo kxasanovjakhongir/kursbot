@@ -528,6 +528,14 @@ describe.skipIf(!enabled)("admin API", () => {
     expect(ids(await history("result=approved"))).not.toContain(String(b.id));
     expect(ids(await history("result=rejected"))).toEqual([String(b.id)]);
     expect(ids(await history("q=Vali"))).toEqual([String(b.id)]);
+
+    // Buyurtmalar ro'yxati: faqat to'laganlar va to'lov usuli bo'yicha filtr
+    const list = async (qs: string) => ids((await request(app).get(`/api/orders?${qs}`).set(auth)).body);
+    expect(await list("paid=1")).toContain(String(a.id));
+    expect(await list("paid=1")).not.toContain(String(b.id));
+    expect(await list("paid=1&method=card")).toContain(String(a.id));
+    expect(await list("paid=1&method=click")).not.toContain(String(a.id));
+    expect((await request(app).get("/api/orders?method=cash").set(auth)).status).toBe(400);
     expect(ids(await history(`q=%23${a.id}`))).toEqual([String(a.id)]);
     expect((await history()).items.find((o: { id: string }) => o.id === String(a.id)).reviewedByPanel.name).toBe("Admin");
 

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import type { OrderStatus, Prisma } from "@prisma/client";
+import type { OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../db";
 import { approveAndNotify, cancelAndNotify, rejectAndNotify } from "../../bot/admin/reviewActions";
@@ -12,6 +12,7 @@ import type { BotRuntime } from "../runtime";
 import { clientIp, paged, pagination, parseBigId, parseBody, parseQuery } from "../validate";
 import { escapeLike } from "../../lib/format";
 
+const METHODS = ["card", "payme", "click"] as const satisfies readonly PaymentMethod[];
 const STATUSES = ["new", "receipt_sent", "rejected", "approved", "joined", "expired", "cancelled", "refunded"] as const satisfies readonly OrderStatus[];
 
 const cancelSchema = z.object({ reason: z.string().trim().max(500).optional() });
@@ -114,12 +115,16 @@ export function ordersRouter(rt: BotRuntime): Router {
   });
 
   r.get("/", async (req, res) => {
-    const { status, page, pageSize } = parseQuery(pagination.extend({ status: z.enum(STATUSES).optional() }), req);
-    const where: Prisma.OrderWhereInput = status ? { status } : {};
+    // paid=1 — faqat to'lov tushgan buyurtmalar (kim, qachon, qaysi usulda to'lagani), oxirgi to'lov birinchi
+    const { status, method, paid, page, pageSize } = parseQuery(
+      pagination.extend({ status: z.enum(STATUSES).optional(), method: z.enum(METHODS).optional(), paid: z.literal("1").optional() }),
+      req,
+    );
+    const where: Prisma.OrderWhereInput = { ...(status && { status }), ...(method && { paymentMethod: method }), ...(paid && { paidAt: { not: null } }) };
     const [items, total] = await Promise.all([
       prisma.order.findMany({
         where,
-        orderBy: { createdAt: "desc" },
+        orderBy: paid ? [{ paidAt: "desc" }, { id: "desc" }] : { createdAt: "desc" },
         skip: (page - 1) * pageSize,
         take: pageSize,
         include: {

@@ -43,6 +43,8 @@ export const ORDER_STATUS: Record<string, { label: string; tone: "green" | "red"
   refunded: { label: "Pul qaytarilgan", tone: "gray" },
 };
 
+export const PAYMENT_METHOD_LABEL: Record<string, string> = { card: "Karta (chek)", payme: "Payme", click: "Click" };
+
 export const AUDIENCE_LABEL: Record<Audience, string> = {
   active: "Faol foydalanuvchilar",
   all: "Barcha foydalanuvchilar",

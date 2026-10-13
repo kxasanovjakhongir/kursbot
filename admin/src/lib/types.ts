@@ -255,6 +255,7 @@ export interface Order {
   cancelReason: string | null;
   createdAt: string;
   paidAt: string | null;
+  paymentMethod: PaymentMethod;
   expiresAt: string;
   user: { id: string; firstName: string | null; lastName: string | null; username: string | null; phone: string | null };
   product: { title: string; code: string };
@@ -263,7 +264,6 @@ export interface Order {
 export type PaymentMethod = "card" | "payme" | "click";
 
 export interface OrderDetail extends Order {
-  paymentMethod: PaymentMethod;
   /** Payme / Click tranzaksiyalari. state: 1 kutilmoqda, 2 to'langan, -1 bekor, -2 qaytarilgan */
   transactions: { id: string; provider: PaymentMethod; externalId: string; state: number; amount: number; createdAt: string; performedAt: string | null; cancelledAt: string | null }[];
   reviewedAt: string | null;

@@ -1,7 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { api } from "../lib/api";
-import { fmtDateTime, fmtSum, fullName, ORDER_STATUS } from "../lib/format";
+import { fmtDateTime, fmtSum, fullName, ORDER_STATUS, PAYMENT_METHOD_LABEL } from "../lib/format";
 import type { OrderDetail } from "../lib/types";
 import { useAsync } from "../hooks/useAsync";
 import { AsyncView, Badge, Card, CardHeader, PageHeader } from "../components/ui";
@@ -10,7 +10,6 @@ import { ReviewActions } from "../components/ReviewActions";
 import { CancelOrder } from "../components/CancelOrder";
 
 
-const PAYMENT_METHOD_LABEL: Record<string, string> = { card: "Karta (chek)", payme: "Payme", click: "Click" };
 const TX_STATE_LABEL: Record<number, string> = { 1: "kutilmoqda", 2: "to'langan", [-1]: "bekor qilingan", [-2]: "qaytarilgan" };
 
 export default function OrderDetailPage() {

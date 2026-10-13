@@ -7,7 +7,7 @@ import { config } from "../src/config";
 import { checkPaymeAuth, paymeCheckoutUrl, PAYME_TX_TIMEOUT_MS } from "../src/services/payments/payme";
 import { clickCheckoutUrl, clickSign } from "../src/services/payments/click";
 import { parseOrderId } from "../src/services/payments/common";
-import { parsePayRef, shortPayUrl } from "../src/services/payments/payLink";
+import { miniAppPayUrl, parsePayRef, shortPayUrl } from "../src/services/payments/payLink";
 import { prisma } from "../src/db";
 import { createApp } from "../src/api/app";
 import { createOrder } from "../src/services/orders";
@@ -305,6 +305,18 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
 
     const payme = await request(app).get(new URL(shortPayUrl("payme", order.id)!).pathname);
     expect(payme.headers.location.startsWith("https://checkout.test.paycom.uz/")).toBe(true);
+
+    // Mini App sahifasi (?tg=1): to'lov manzili ichida, Telegram skripti va iframe'ga faqat shu sahifada ruxsat
+    const page = await request(app).get(miniAppPayUrl("click", order.id)!.replace("https://app.example.uz", ""));
+    expect(page.status).toBe(200);
+    expect(page.headers["content-type"]).toContain("text/html");
+    expect(page.text).toContain(`href="${res.headers.location.replace(/&/g, "&amp;")}"`);
+    expect(page.text).toContain("https://telegram.org/js/telegram-web-app.js");
+    expect(page.headers["content-security-policy"]).toContain("frame-ancestors https://web.telegram.org");
+    expect(page.headers["x-frame-options"]).toBeUndefined();
+    expect((await request(app).get(`/pay/click/${order.id}-aaaaaaaaaaaaaaaa?tg=1`)).status).toBe(404);
+    // Panel sahifalarining umumiy himoyasi o'zgarmagan
+    expect((await request(app).get("/health")).headers["x-frame-options"]).toBe("SAMEORIGIN");
 
     expect((await request(app).get(`/pay/click/${order.id}-aaaaaaaaaaaaaaaa`)).status).toBe(404);
     expect((await request(app).get(new URL(shortPayUrl("click", 999999n)!).pathname)).status).toBe(404);

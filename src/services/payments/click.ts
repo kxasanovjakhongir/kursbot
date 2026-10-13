@@ -80,7 +80,16 @@ const REQUIRED = ["click_trans_id", "service_id", "merchant_trans_id", "amount",
 export async function handleClick(body: unknown, expectedAction: 0 | 1): Promise<ClickOutcome> {
   const p = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const echo = { click_trans_id: str(p.click_trans_id) || null, merchant_trans_id: str(p.merchant_trans_id) || null };
-  const reply = (e: ClickError, extra: Record<string, unknown> = {}): ClickOutcome => ({ body: { ...echo, ...extra, ...e } });
+  const reply = (e: ClickError, extra: Record<string, unknown> = {}): ClickOutcome => {
+    // Rad javoblari ham HTTP 200 bilan ketadi (so'rov logida ko'rinmaydi) — sababi shu yerda yoziladi. Imzo va kalit logga tushmaydi
+    if (e.error !== 0) {
+      logger.warn(
+        { action: expectedAction, error: e.error, note: e.error_note, ...echo, serviceId: str(p.service_id) || null, amount: str(p.amount) || null },
+        "Click so'rovi rad etildi",
+      );
+    }
+    return { body: { ...echo, ...extra, ...e } };
+  };
 
   try {
     if (REQUIRED.some((k) => !str(p[k])) || (expectedAction === 1 && !str(p.merchant_prepare_id))) return reply(CLICK_ERRORS.badRequest);

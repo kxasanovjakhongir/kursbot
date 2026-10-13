@@ -29,6 +29,7 @@ import { analyticsRouter } from "./routes/analytics";
 import { errorsRouter } from "./routes/errors";
 import { lessonsRouter } from "./routes/lessons";
 import { paymentsRouter } from "./routes/payments";
+import { mountPayRedirect } from "./payRedirect";
 
 export interface AppOptions {
   runtime: BotRuntime;
@@ -60,6 +61,7 @@ export function createApp({ runtime, webhook }: AppOptions): Express {
   );
   mountProbes(app, runtime);
   mountTrackingRedirect(app, runtime);
+  mountPayRedirect(app, runtime);
   // Payme / Click: o'z autentifikatsiyasi bor, panel CORS / rate limit / JWT dan tashqarida
   app.use("/api/payments", paymentsRouter(runtime));
 

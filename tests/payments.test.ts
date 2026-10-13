@@ -94,6 +94,7 @@ describe("onlayn to'lov: yordamchi funksiyalar", () => {
 
 describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
   const sent: { chatId: number; text: string }[] = [];
+  const kicked: number[] = [];
   const fakeApi = {
     token: "test",
     getMe: async () => ({ id: 42, is_bot: true, first_name: "Test bot", username: "test_bot" }),
@@ -104,7 +105,10 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     createChatInviteLink: async () => ({ invite_link: `https://t.me/+pay${sent.length}` }),
     editMessageCaption: async () => true,
     editMessageText: async () => true,
-    banChatMember: async () => true,
+    banChatMember: async (_chatId: number, userId: number) => {
+      kicked.push(userId);
+      return true;
+    },
     unbanChatMember: async () => true,
     revokeChatInviteLink: async () => true,
     getChatMember: async () => ({ status: "administrator", can_invite_users: true, can_restrict_members: true }),
@@ -292,6 +296,31 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
         .type("form")
         .send(signed({ ...base(order.id, "c4"), action: "1", merchant_prepare_id: "99999" }, 1));
       expect(unknown.body.error).toBe(-6);
+    });
+
+    it("Click to'langan to'lovni bekor qilsa — pul qaytarilgan: buyurtma refunded, kanaldan chiqariladi", async () => {
+      await prisma.accessGrant.deleteMany({});
+      const order = await newOrder();
+      const prep = await request(app).post("/api/payments/click/prepare").type("form").send(signed({ ...base(order.id, "c5"), action: "0" }, 0));
+      const complete = (error: string) =>
+        request(app)
+          .post("/api/payments/click/complete")
+          .type("form")
+          .send(signed({ ...base(order.id, "c5"), error, action: "1", merchant_prepare_id: String(prep.body.merchant_prepare_id) }, 1));
+      expect((await complete("0")).body.error).toBe(0);
+      await vi.waitFor(async () => expect(await prisma.accessGrant.count({ where: { orderId: order.id, revokedAt: null } })).toBe(1));
+
+      kicked.length = 0;
+      expect((await complete("-5017")).body.error).toBe(-9);
+      await vi.waitFor(async () => expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("refunded"));
+      expect(await prisma.accessGrant.count({ where: { orderId: order.id, revokedAt: null } })).toBe(0);
+      expect(kicked).toEqual([7001]);
+      expect((await prisma.paymentTransaction.findFirstOrThrow({ where: { externalId: "c5" } })).state).toBe(-2);
+
+      // Takroriy bekor qilish so'rovi — qayta chiqarilmaydi
+      kicked.length = 0;
+      expect((await complete("-5017")).body.error).toBe(-9);
+      expect(kicked).toEqual([]);
     });
   });
 

@@ -31,6 +31,8 @@ export interface ClickOutcome {
   body: Record<string, unknown>;
   paidOrderId?: bigint;
   duplicatePayment?: boolean;
+  /** To'langan to'lov Click tomonidan bekor qilindi (pul qaytarildi) — kirish yopiladi */
+  refundedOrderId?: bigint;
 }
 
 const md5 = (s: string) => createHash("md5").update(s).digest("hex");
@@ -153,12 +155,20 @@ async function complete(p: Record<string, unknown>, reply: Reply): Promise<Click
   if (!tx || tx.orderId.toString() !== str(p.merchant_trans_id)) return reply(CLICK_ERRORS.txNotFound);
   const ids = { merchant_confirm_id: Number(tx.id) };
 
-  if (tx.state === TX_STATE.paid) return reply(CLICK_ERRORS.alreadyPaid, ids);
+  const clickError = Number(str(p.error) || "0");
+  if (tx.state === TX_STATE.paid) {
+    if (!(clickError < 0)) return reply(CLICK_ERRORS.alreadyPaid, ids);
+    // To'langan to'lov bekor qilindi (pul mijozga qaytarildi): tranzaksiya refunded, kirish yopiladi
+    const moved = await prisma.paymentTransaction.updateMany({
+      where: { id: tx.id, state: TX_STATE.paid },
+      data: { state: TX_STATE.refunded, reason: clickError, cancelledAt: new Date() },
+    });
+    return { ...reply(CLICK_ERRORS.txCancelled, ids), ...(moved.count === 1 && { refundedOrderId: tx.orderId }) };
+  }
   if (tx.state !== TX_STATE.pending) return reply(CLICK_ERRORS.txCancelled, ids);
   if (!amountMatches(str(p.amount), tx.amount)) return reply(CLICK_ERRORS.invalidAmount, ids);
 
   // Click to'lov o'tmaganini bildirdi (masalan, kartada mablag' yetarli emas)
-  const clickError = Number(str(p.error) || "0");
   if (clickError < 0) {
     await prisma.paymentTransaction.updateMany({
       where: { id: tx.id, state: TX_STATE.pending },

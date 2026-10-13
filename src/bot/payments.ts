@@ -52,6 +52,14 @@ export async function onOnlineRefund(api: Api, orderId: bigint, provider: Paymen
     include: { user: true, product: true, grants: { where: { revokedAt: null }, include: { product: true, user: true } } },
   });
   if (!order) return;
+  // Ikki marta to'lovning ortiqchasi qaytdi (buyurtma boshqa usulda to'langan) — kirish joyida qoladi
+  if (order.paymentMethod !== provider) {
+    await sendToAdminGroup(
+      api,
+      `↩️ <b>Buyurtma #${orderId}</b>: ${PROVIDER_NAME[provider]} orqali qilingan ortiqcha to'lov qaytarildi. Buyurtma ${PROVIDER_NAME[order.paymentMethod]} orqali to'langan — kirish o'zgarmadi.`,
+    ).catch(() => undefined);
+    return;
+  }
 
   const failed: string[] = [];
   for (const grant of order.grants) {

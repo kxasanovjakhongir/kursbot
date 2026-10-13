@@ -45,6 +45,10 @@ export function paymentsRouter(rt: BotRuntime): Router {
         const id = out.paidOrderId;
         runInBackground("Click: to'lovdan keyingi amallar bajarilmadi", () => onOnlinePaid(rt.api, id, "click", !!out.duplicatePayment));
       }
+      if (out.refundedOrderId) {
+        const id = out.refundedOrderId;
+        runInBackground("Click: qaytarishdan keyingi amallar bajarilmadi", () => onOnlineRefund(rt.api, id, "click"));
+      }
     });
   }
 

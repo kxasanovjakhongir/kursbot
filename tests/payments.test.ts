@@ -7,6 +7,7 @@ import { config } from "../src/config";
 import { checkPaymeAuth, paymeCheckoutUrl, PAYME_TX_TIMEOUT_MS } from "../src/services/payments/payme";
 import { clickCheckoutUrl, clickSign } from "../src/services/payments/click";
 import { parseOrderId } from "../src/services/payments/common";
+import { parsePayRef, shortPayUrl } from "../src/services/payments/payLink";
 import { prisma } from "../src/db";
 import { createApp } from "../src/api/app";
 import { createOrder } from "../src/services/orders";
@@ -68,6 +69,17 @@ describe("onlayn to'lov: yordamchi funksiyalar", () => {
       transaction_param: "7",
       return_url: "https://t.me/test_bot",
     });
+  });
+
+  it("qisqa to'lov havolasi: o'z domenimiz, imzo buyurtma va tizimga bog'langan", () => {
+    const url = shortPayUrl("click", 7n)!;
+    expect(url).toMatch(/^https:\/\/app\.example\.uz\/pay\/click\/7-[\w-]{16}$/);
+    const ref = url.split("/").pop()!;
+    expect(parsePayRef("click", ref)).toBe(7n);
+    // Boshqa buyurtma yoki boshqa tizim uchun o'sha imzo yaramaydi
+    expect(parsePayRef("click", ref.replace(/^7-/, "8-"))).toBeNull();
+    expect(parsePayRef("payme", ref)).toBeNull();
+    for (const bad of ["7", "7-", "-abc", "abc", `${ref}x`]) expect(parsePayRef("click", bad)).toBeNull();
   });
 
   it("buyurtma raqami faqat musbat butun son", () => {
@@ -281,6 +293,22 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
         .send(signed({ ...base(order.id, "c4"), action: "1", merchant_prepare_id: "99999" }, 1));
       expect(unknown.body.error).toBe(-6);
     });
+  });
+
+  it("qisqa havola /pay/...: to'lov sahifasiga yo'naltiradi; noto'g'ri imzo yoki buyurtma — 404", async () => {
+    const order = await newOrder();
+    const res = await request(app).get(new URL(shortPayUrl("click", order.id)!).pathname);
+    expect(res.status).toBe(302);
+    const to = new URL(res.headers.location);
+    expect(to.origin + to.pathname).toBe("https://my.click.uz/services/pay");
+    expect(Object.fromEntries(to.searchParams)).toMatchObject({ amount: "150000", transaction_param: order.id.toString(), return_url: "https://t.me/test_bot" });
+
+    const payme = await request(app).get(new URL(shortPayUrl("payme", order.id)!).pathname);
+    expect(payme.headers.location.startsWith("https://checkout.test.paycom.uz/")).toBe(true);
+
+    expect((await request(app).get(`/pay/click/${order.id}-aaaaaaaaaaaaaaaa`)).status).toBe(404);
+    expect((await request(app).get(new URL(shortPayUrl("click", 999999n)!).pathname)).status).toBe(404);
+    expect((await request(app).get(`/pay/other/${order.id}-x`)).status).toBe(404);
   });
 
   it("sozlanmagan tizim endpointi 404", async () => {

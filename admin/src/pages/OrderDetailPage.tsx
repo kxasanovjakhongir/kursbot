@@ -9,6 +9,10 @@ import { ReceiptFile } from "../components/ReceiptFile";
 import { ReviewActions } from "../components/ReviewActions";
 import { CancelOrder } from "../components/CancelOrder";
 
+
+const PAYMENT_METHOD_LABEL: Record<string, string> = { card: "Karta (chek)", payme: "Payme", click: "Click" };
+const TX_STATE_LABEL: Record<number, string> = { 1: "kutilmoqda", 2: "to'langan", [-1]: "bekor qilingan", [-2]: "qaytarilgan" };
+
 export default function OrderDetailPage() {
   const { id = "" } = useParams();
   const order = useAsync(() => api.get<OrderDetail>(`/orders/${id}`).then((r) => r.data), [id]);
@@ -39,13 +43,17 @@ export default function OrderDetailPage() {
                     ["Mijoz", <Link key="u" to={`/telegram-users/${o.user.id}`} className="text-blue-600 hover:underline">{fullName(o.user)}</Link>],
                     ["Telefon", o.user.phone ?? "—"],
                     ["Summa", <b key="s">{fmtSum(o.amount)}</b>],
+                    ["To'lov usuli", PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod],
                     ["Karta", o.card ? `${o.card.numberMasked} (${o.card.holder})` : "—"],
+                    ...(o.transactions?.length
+                      ? [["Onlayn to'lov", o.transactions.map((t) => `${PAYMENT_METHOD_LABEL[t.provider]} #${t.externalId}: ${TX_STATE_LABEL[t.state] ?? t.state}`).join("; ")]]
+                      : []),
                     ["Manba", o.source ?? "—"],
                     ["Urinishlar", o.attempts],
                     ["Ochilgan", fmtDateTime(o.createdAt)],
                     ["Muddat", fmtDateTime(o.expiresAt)],
                     ["To'langan", fmtDateTime(o.paidAt)],
-                    ["Ko'rib chiqqan", o.reviewedByPanel || o.reviewedBy?.name ? `${o.reviewedByPanel ? `${o.reviewedByPanel.name} (panel)` : o.reviewedBy?.name}, ${fmtDateTime(o.reviewedAt)}` : "—"],
+                    ["Ko'rib chiqqan", o.paidAt && o.paymentMethod !== "card" ? `Avtomatik (${PAYMENT_METHOD_LABEL[o.paymentMethod]}), ${fmtDateTime(o.paidAt)}` : o.reviewedByPanel || o.reviewedBy?.name ? `${o.reviewedByPanel ? `${o.reviewedByPanel.name} (panel)` : o.reviewedBy?.name}, ${fmtDateTime(o.reviewedAt)}` : "—"],
                     ["Rad etish sababi", o.rejectReason ?? "—"],
                     ...(o.cancelledAt
                       ? [

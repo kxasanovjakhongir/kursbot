@@ -63,6 +63,11 @@ export const uz = {
   payment_info_shortfall: "\n\n⚠️ Oldingi to'lovda <b>{farq}</b> kam edi. Qolgan summani o'tkazib, chekni yuboring.",
   payment_under_review: "🔎 Buyurtma #{raqam} bo'yicha chekingiz tekshirilmoqda. Tez orada javob beramiz.",
   payment_unavailable: "😔 Kechirasiz, to'lov ma'lumotlari hozircha tayyor emas. Admin tez orada siz bilan bog'lanadi.",
+  payment_info_online: "🧾 <b>Buyurtma #{raqam}</b>\n\n📚 Darslik: {mahsulot}\n💰 Summa: <b>{summa}</b>",
+  payment_step_online: "💳 Quyidagi tugma orqali Payme yoki Click ilovasida to'lang — to'lov avtomatik tasdiqlanadi va kurs darhol ochiladi.",
+  payment_online_hint: "💳 Yoki Payme / Click orqali onlayn to'lang — chek yuborish shart emas, to'lov avtomatik tasdiqlanadi.",
+  btn_pay_payme: "💳 Payme orqali to'lash",
+  btn_pay_click: "💳 Click orqali to'lash",
   btn_copy_card: "📋 Karta raqamini nusxalash",
   order_cancel_confirm:
     "❓ <b>Buyurtma #{raqam} bekor qilinsinmi?</b>\n\n{mahsulot}\n\nKeyin istalgan vaqtda qaytadan buyurtma berishingiz mumkin.",
@@ -72,6 +77,7 @@ export const uz = {
   order_cancel_failed: "Bu buyurtmani bekor qilib bo'lmaydi: chek allaqachon yuborilgan yoki buyurtma yopilgan.",
   order_cancelled_by_admin: "❌ <b>Buyurtma #{raqam}</b> ({mahsulot}) admin tomonidan bekor qilindi.{sabab}\n\nSavollar bo'lsa, admin bilan bog'laning.",
   order_refunded_by_admin: "❌ <b>Buyurtma #{raqam}</b> ({mahsulot}) admin tomonidan bekor qilindi, kanalga kirish yopildi.{sabab}\n\nSavollar bo'lsa, admin bilan bog'laning.",
+  order_refunded_online: "↩️ <b>Buyurtma #{raqam}</b> ({mahsulot}) bo'yicha to'lov bekor qilindi va pul kartangizga qaytarildi. Kanalga kirish yopildi.\n\nSavollar bo'lsa, admin bilan bog'laning.",
   order_cancel_reason: "\n\n📝 Sabab: {sabab}",
 
   // ---------- Chek ----------

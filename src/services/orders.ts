@@ -3,6 +3,7 @@ import { prisma } from "../db";
 import { logger } from "../lib/logger";
 import { pickCard } from "./cards";
 import { getSettings } from "./settings";
+import { onlinePaymentsEnabled } from "../config";
 
 /** Ruxsat etilgan o'tishlar (TZ 8.1). Boshqa har qanday o'zgarish xato. */
 export const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -92,6 +93,7 @@ async function attributedLinkId(tx: Prisma.TransactionClient, userId: bigint): P
 
 /**
  * "Darslikni olaman": yangi buyurtma, narx qotiriladi, karta tanlanadi, muddat 72 soat (TZ 5.4).
+ * Faol karta bo'lmasa — faqat Payme / Click sozlangan bo'lsa yaratiladi (cardId = null).
  * Shu mahsulotga ochiq buyurtma bo'lsa — o'sha qaytariladi (BR-01).
  */
 export async function createOrder(userId: bigint, product: Product, source: string | null): Promise<CreateOrderResult> {
@@ -104,13 +106,14 @@ export async function createOrder(userId: bigint, product: Product, source: stri
   try {
     return await prisma.$transaction(async (tx) => {
       const card = await pickCard(tx);
-      if (!card) return { kind: "no_card" } as const;
+      // Karta yo'q, lekin Payme / Click yoqilgan — buyurtma faqat onlayn to'lov bilan
+      if (!card && !onlinePaymentsEnabled()) return { kind: "no_card" } as const;
       const order = await tx.order.create({
         data: {
           userId,
           productId: product.id,
           amount: Math.round(product.price),
-          cardId: card.id,
+          cardId: card?.id ?? null,
           source,
           linkId: await attributedLinkId(tx, userId),
           expiresAt: new Date(Date.now() + settings.order_ttl_hours * 3600_000),

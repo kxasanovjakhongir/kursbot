@@ -14,7 +14,7 @@ import { clickEnabled, paymeEnabled } from "../../config";
 import { paymeCheckoutUrl } from "../../services/payments/payme";
 import { clickCheckoutUrl } from "../../services/payments/click";
 import { returnUrl } from "../../services/payments/common";
-import { shortPayUrl } from "../../services/payments/payLink";
+import { miniAppPayUrl } from "../../services/payments/payLink";
 import { paginate, type Screen } from "../ui/render";
 
 const PAGE_SIZE = 8;
@@ -136,21 +136,24 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   };
   const on = await buttonSwitch("payment");
   const back = returnUrl(ctx.me?.username);
-  // Havola: qisqa (o'z domenimiz, to'lov sahifasiga yo'naltiradi); ochiq manzil sozlanmagan bo'lsa — to'g'ridan-to'g'ri.
+  // app — Mini App tugmasi (o'z domenimizdagi sahifa to'lov sahifasini darhol ochadi): Telegram «Havolani
+  // ochasizmi?» oynasini ko'rsatmaydi. Ochiq manzil sozlanmagan bo'lsa — oddiy havola tugmasi (url).
   // Click tugmasi ko'k (Click rangi) — Telegram tugma uslubi
   const online = [
     paymeEnabled() &&
       on("pay_payme") && {
         label: ctx.label("btn_pay_payme"),
-        url: shortPayUrl("payme", order.id) ?? paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }),
+        app: miniAppPayUrl("payme", order.id),
+        url: paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }),
       },
     clickEnabled() &&
       on("pay_click") && {
         label: ctx.label("btn_pay_click"),
-        url: shortPayUrl("click", order.id) ?? clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
+        app: miniAppPayUrl("click", order.id),
+        url: clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
         style: "primary" as const,
       },
-  ].filter((b): b is { label: string; url: string; style?: "primary" } => !!b);
+  ].filter((b): b is { label: string; app: string | null; url: string; style?: "primary" } => !!b);
 
   // Sarlavha (karta ma'lumoti) + paneldan tahrirlanadigan ko'rsatmalar; muddat — buyurtmaning o'zidan
   // Paneldan o'chirilgan yoki bo'sh qoldirilgan qismlar tushib qoladi.
@@ -173,7 +176,8 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   const kb = new InlineKeyboard();
   // Payme / Click: to'lov sahifasi (buyurtma raqami va summa havolaning ichida)
   for (const b of online) {
-    kb.url(b.label, b.url);
+    if (b.app) kb.webApp(b.label, b.app);
+    else kb.url(b.label, b.url);
     if (b.style) kb.style(b.style);
     kb.row();
   }

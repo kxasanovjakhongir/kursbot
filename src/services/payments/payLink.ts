@@ -29,15 +29,6 @@ export function shortPayUrl(provider: PayProvider, orderId: bigint): string | nu
   return base ? `${base}/pay/${provider}/${orderId}-${sign(provider, orderId)}` : null;
 }
 
-/**
- * O'sha havolaning Telegram Mini App ko'rinishi (inline tugma `web_app`): Telegram «Havolani ochasizmi?»
- * oynasini ko'rsatmaydi — sahifa ochiladi va to'lov sahifasini darhol tashqi brauzer / ilovada ochadi.
- */
-export function miniAppPayUrl(provider: PayProvider, orderId: bigint): string | null {
-  const url = shortPayUrl(provider, orderId);
-  return url ? `${url}?tg=1` : null;
-}
-
 /** "<buyurtma>-<imzo>" → buyurtma raqami; imzo mos kelmasa null */
 export function parsePayRef(provider: PayProvider, ref: string): bigint | null {
   const cut = ref.indexOf("-");

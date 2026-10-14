@@ -263,6 +263,32 @@ export interface Order {
 
 export type PaymentMethod = "card" | "payme" | "click";
 
+/** Onlayn to'lov tranzaksiyasi. state: 1 kutilmoqda, 2 to'langan, -1 bekor, -2 qaytarilgan */
+export interface PaymentTx {
+  id: string;
+  provider: "payme" | "click";
+  externalId: string;
+  state: number;
+  /** Payme bekor qilish sababi (1–10) yoki Click xato kodi */
+  reason: number | null;
+  amount: number;
+  meta: { click_paydoc_id?: string | null } | null;
+  createdAt: string;
+  performedAt: string | null;
+  cancelledAt: string | null;
+  order: {
+    id: string;
+    status: OrderStatus;
+    paymentMethod: PaymentMethod;
+    user: { id: string; firstName: string | null; lastName: string | null; username: string | null; phone: string | null };
+    product: { title: string };
+  };
+}
+
+export interface PaymentsPage extends Paged<PaymentTx> {
+  summary: Record<"1" | "2" | "-1" | "-2", { count: number; amount: number }>;
+}
+
 export interface OrderDetail extends Order {
   /** Payme / Click tranzaksiyalari. state: 1 kutilmoqda, 2 to'langan, -1 bekor, -2 qaytarilgan */
   transactions: { id: string; provider: PaymentMethod; externalId: string; state: number; amount: number; createdAt: string; performedAt: string | null; cancelledAt: string | null }[];

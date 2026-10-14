@@ -45,6 +45,14 @@ export const ORDER_STATUS: Record<string, { label: string; tone: "green" | "red"
 
 export const PAYMENT_METHOD_LABEL: Record<string, string> = { card: "Karta (chek)", payme: "Payme", click: "Click" };
 
+/** Onlayn to'lov tranzaksiyasi holati (Payme raqamlari bilan bir xil) */
+export const TX_STATE: Record<number, { label: string; tone: "green" | "red" | "yellow" | "blue" | "gray" }> = {
+  1: { label: "Kutilmoqda", tone: "yellow" },
+  2: { label: "To'langan", tone: "green" },
+  [-1]: { label: "Bekor qilingan", tone: "gray" },
+  [-2]: { label: "Pul qaytarilgan", tone: "red" },
+};
+
 export const AUDIENCE_LABEL: Record<Audience, string> = {
   active: "Faol foydalanuvchilar",
   all: "Barcha foydalanuvchilar",

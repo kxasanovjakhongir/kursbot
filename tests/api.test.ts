@@ -495,6 +495,41 @@ describe.skipIf(!enabled)("admin API", () => {
     await request(app).post(`/api/telegram-users/${ali.id}/unban`).set(auth);
   });
 
+  it("onlayn to'lovlar: ro'yxat, tizim / holat filtri, qidiruv va holatlar bo'yicha jami", async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const product = await prisma.product.create({ data: { code: "onlayn", title: "Onlayn kurs", price: 7000, channelId: -1003n } });
+    const ali = await prisma.user.findUniqueOrThrow({ where: { telegramId: 1001n } });
+    const expiresAt = new Date(Date.now() + 3600_000);
+    const order = await prisma.order.create({ data: { userId: ali.id, productId: product.id, amount: 7000, status: "approved", paymentMethod: "click", paidAt: new Date(), expiresAt } });
+    await prisma.paymentTransaction.createMany({
+      data: [
+        { provider: "click", externalId: "ck-1", orderId: order.id, amount: 7000, state: -1, reason: -5017 },
+        { provider: "click", externalId: "ck-2", orderId: order.id, amount: 7000, state: 2, performedAt: new Date(), meta: { click_paydoc_id: "doc-2" } },
+        { provider: "payme", externalId: "pm-1", orderId: order.id, amount: 7000, state: -2, reason: 5, cancelledAt: new Date() },
+      ],
+    });
+    const get = async (qs = "") => (await request(app).get(`/api/orders/payments?${qs}`).set(auth)).body;
+    const ids = (b: { items: { externalId: string }[] }) => b.items.map((t) => t.externalId);
+
+    const all = await get();
+    expect(ids(all)).toEqual(["pm-1", "ck-2", "ck-1"]);
+    expect(all.items[1]).toMatchObject({ provider: "click", state: 2, amount: 7000, meta: { click_paydoc_id: "doc-2" }, order: { id: String(order.id), product: { title: "Onlayn kurs" } } });
+    expect(all.items[1].order.user).toMatchObject({ firstName: "Ali" });
+    expect(all.summary).toEqual({ "1": { count: 0, amount: 0 }, "2": { count: 1, amount: 7000 }, "-1": { count: 1, amount: 7000 }, "-2": { count: 1, amount: 7000 } });
+
+    expect(ids(await get("provider=click"))).toEqual(["ck-2", "ck-1"]);
+    const paid = await get("state=2");
+    expect(ids(paid)).toEqual(["ck-2"]);
+    // Jami holat filtriga bog'liq emas — kartochkalarda barcha holatlar ko'rinadi
+    expect(paid.summary["-2"].count).toBe(1);
+    expect(ids(await get("q=pm-1"))).toEqual(["pm-1"]);
+    expect(ids(await get(`q=%23${order.id}&provider=payme`))).toEqual(["pm-1"]);
+    expect(ids(await get("q=Onlayn&state=-1"))).toEqual(["ck-1"]);
+    expect(ids(await get("q=yo'q-narsa"))).toEqual([]);
+    expect((await request(app).get("/api/orders/payments?state=7").set(auth)).status).toBe(400);
+    expect((await request(app).get("/api/orders/payments")).status).toBe(401);
+  });
+
   it("cheklar tarixi: tasdiqlangan va rad etilganlar, filtr va qidiruv; buyurtmani bekor qilish", async () => {
     const auth = { Authorization: `Bearer ${adminToken}` };
     const product = await prisma.product.create({ data: { code: "tarix", title: "Tarix kursi", price: 5000, channelId: -1002n } });

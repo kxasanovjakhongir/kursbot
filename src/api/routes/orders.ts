@@ -17,6 +17,13 @@ const STATUSES = ["new", "receipt_sent", "rejected", "approved", "joined", "expi
 
 const cancelSchema = z.object({ reason: z.string().trim().max(500).optional() });
 
+const TX_STATES = ["1", "2", "-1", "-2"] as const;
+const paymentsQuery = pagination.extend({
+  provider: z.enum(["payme", "click"]).optional(),
+  state: z.enum(TX_STATES).optional(),
+  q: z.string().trim().max(100).optional(),
+});
+
 const historyQuery = pagination.extend({
   result: z.enum(["all", "approved", "rejected", "cancelled"]).default("all"),
   q: z.string().trim().max(100).optional(),
@@ -112,6 +119,64 @@ export function ordersRouter(rt: BotRuntime): Router {
       prisma.order.count({ where }),
     ]);
     res.json(paged(items, total, page, pageSize));
+  });
+
+  /**
+   * Onlayn to'lovlar (Payme / Click tranzaksiyalari): kim, qaysi kursga, qancha, qaysi holatda.
+   * summary — tanlangan tizim va qidiruv bo'yicha holatlar kesimida soni va summasi (holat filtrisiz).
+   */
+  r.get("/payments", async (req, res) => {
+    const { provider, state, q, page, pageSize } = parseQuery(paymentsQuery, req);
+    const base: Prisma.PaymentTransactionWhereInput = provider ? { provider } : {};
+    if (q) {
+      const term = q.replace(/^#/, "");
+      const like = { contains: escapeLike(term), mode: "insensitive" as const };
+      base.OR = [
+        ...(/^\d{1,18}$/.test(term) ? [{ orderId: BigInt(term) }] : []),
+        { externalId: term },
+        { order: { user: { OR: [{ firstName: like }, { lastName: like }, { username: like }, { phone: { contains: escapeLike(term.replace(/\D/g, "") || term) } }] } } },
+        { order: { product: { title: like } } },
+      ];
+    }
+    const where: Prisma.PaymentTransactionWhereInput = state ? { ...base, state: Number(state) } : base;
+    const [items, total, groups] = await Promise.all([
+      prisma.paymentTransaction.findMany({
+        where,
+        orderBy: { id: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        select: {
+          id: true,
+          provider: true,
+          externalId: true,
+          state: true,
+          reason: true,
+          amount: true,
+          meta: true,
+          createdAt: true,
+          performedAt: true,
+          cancelledAt: true,
+          order: {
+            select: {
+              id: true,
+              status: true,
+              paymentMethod: true,
+              user: { select: { id: true, firstName: true, lastName: true, username: true, phone: true } },
+              product: { select: { title: true } },
+            },
+          },
+        },
+      }),
+      prisma.paymentTransaction.count({ where }),
+      prisma.paymentTransaction.groupBy({ by: ["state"], where: base, _count: { _all: true }, _sum: { amount: true } }),
+    ]);
+    const summary = Object.fromEntries(
+      TX_STATES.map((s) => {
+        const g = groups.find((x) => x.state === Number(s));
+        return [s, { count: g?._count._all ?? 0, amount: g?._sum.amount ?? 0 }];
+      }),
+    );
+    res.json({ ...paged(items, total, page, pageSize), summary });
   });
 
   r.get("/", async (req, res) => {

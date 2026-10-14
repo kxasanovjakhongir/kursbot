@@ -4,6 +4,7 @@ import { logger } from "../lib/logger";
 import { pickCard } from "./cards";
 import { getSettings } from "./settings";
 import { onlinePaymentsEnabled } from "../config";
+import { TX_STATE } from "./payments/common";
 
 /** Ruxsat etilgan o'tishlar (TZ 8.1). Boshqa har qanday o'zgarish xato. */
 export const TRANSITIONS: Record<OrderStatus, readonly OrderStatus[]> = {
@@ -75,6 +76,22 @@ export async function listOpenOrders(userId: bigint) {
   });
 }
 
+/**
+ * Narx tushgan (chegirma) bo'lsa, hali to'lanmagan ochiq buyurtma yangi narxga tushiriladi — mijoz chegirmadan
+ * oldin ochilgan buyurtmaning eski, qimmatroq summasini to'lamaydi. Narx oshsa, buyurtmadagi summa qoladi (BR-03).
+ * Chek yuborilgan, rad etilgan yoki onlayn to'lov boshlangan (kutilayotgan tranzaksiya) buyurtma o'zgarmaydi:
+ * summa allaqachon ishlatilmoqda.
+ */
+export async function applyPriceDrop<T extends Order>(order: T, product: Pick<Product, "price">): Promise<T> {
+  const price = Math.round(product.price);
+  if (order.status !== "new" || price <= 0 || price >= order.amount) return order;
+  const res = await prisma.order.updateMany({
+    where: { id: order.id, status: "new", amount: { gt: price }, transactions: { none: { state: TX_STATE.pending } } },
+    data: { amount: price },
+  });
+  return res.count === 1 ? { ...order, amount: price } : order;
+}
+
 export type CreateOrderResult =
   | { kind: "created"; order: Order }
   | { kind: "existing"; order: Order }
@@ -92,14 +109,14 @@ async function attributedLinkId(tx: Prisma.TransactionClient, userId: bigint): P
 }
 
 /**
- * "Darslikni olaman": yangi buyurtma, narx qotiriladi, karta tanlanadi, muddat 72 soat (TZ 5.4).
+ * "Darslikni olaman": yangi buyurtma, narx qotiriladi (narx tushsa — applyPriceDrop), karta tanlanadi, muddat 72 soat (TZ 5.4).
  * Faol karta bo'lmasa — faqat Payme / Click sozlangan bo'lsa yaratiladi (cardId = null).
  * Shu mahsulotga ochiq buyurtma bo'lsa — o'sha qaytariladi (BR-01).
  */
 export async function createOrder(userId: bigint, product: Product, source: string | null): Promise<CreateOrderResult> {
   await expireStaleOrders(userId);
   const existing = await findOpenOrder(userId, product.id);
-  if (existing) return { kind: "existing", order: existing };
+  if (existing) return { kind: "existing", order: await applyPriceDrop(existing, product) };
   if (product.price <= 0) return { kind: "no_price" };
 
   const settings = await getSettings();
@@ -125,7 +142,7 @@ export async function createOrder(userId: bigint, product: Product, source: stri
     // Ikki marta tez bosilganda qisman unique indeks (orders_one_open) ishlaydi
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       const order = await findOpenOrder(userId, product.id);
-      if (order) return { kind: "existing", order };
+      if (order) return { kind: "existing", order: await applyPriceDrop(order, product) };
     }
     throw err;
   }

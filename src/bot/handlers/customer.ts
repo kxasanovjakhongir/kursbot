@@ -14,7 +14,7 @@ import { recordStart, setPhone, setLastProduct, displayName, markBlocked } from 
 import { hasCourseAccess, isBlockedError, isUnavailableFileError, lessonPosition, sendLesson } from "../../services/lessons";
 import { checkOwnership, getActiveProduct, getViewableProduct } from "../../services/products";
 import { recordLinkVisit, resolveEntry } from "../../services/campaignLinks";
-import { cancelOrder, createOrder } from "../../services/orders";
+import { applyPriceDrop, cancelOrder, createOrder } from "../../services/orders";
 import { refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
 import { sendLeadToCrm } from "../../services/crm";
@@ -261,7 +261,7 @@ pm.callbackQuery(new RegExp(`^pay:${ID_RE}$`), async (ctx) => {
     await ctx.answerCallbackQuery({ text: await ctx.t("receipt_order_closed"), show_alert: true });
     return;
   }
-  await render(ctx, await paymentScreen(ctx, order));
+  await render(ctx, await paymentScreen(ctx, await applyPriceDrop(order, order.product)));
 });
 
 // ---------- Buyurtmani bekor qilish (tasdiqlash bilan) ----------

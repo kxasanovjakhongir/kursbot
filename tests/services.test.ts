@@ -17,7 +17,7 @@ const fakeApi = {
 
 async function reset() {
   await prisma.$executeRawUnsafe(
-    `TRUNCATE broadcast_recipients, broadcasts, events, audit_log, messages, reminders, access_grants, receipts, orders, promo_codes, cards, products, admins, settings, texts, users RESTART IDENTITY CASCADE`,
+    `TRUNCATE payment_transactions, broadcast_recipients, broadcasts, events, audit_log, messages, reminders, access_grants, receipts, orders, promo_codes, cards, products, admins, settings, texts, users RESTART IDENTITY CASCADE`,
   );
   await prisma.product.createMany({
     data: [
@@ -56,6 +56,29 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
     expect(r.kind).toBe("created");
     expect(again.kind).toBe("existing");
     expect("order" in again && again.order.amount).toBe(1_250_000);
+  });
+
+  it("chegirma: narx tushsa ochiq buyurtma yangi narxga tushadi; chek yuborilgan yoki onlayn to'lov boshlangan buyurtma — yo'q", async () => {
+    const u = await user(100n);
+    const r = await createOrder(u.id, await product("4b"), null);
+    if (r.kind !== "created") throw new Error();
+    await prisma.product.update({ where: { code: "4b" }, data: { price: 625_000, oldPrice: 1_250_000 } });
+    const again = await createOrder(u.id, await product("4b"), null);
+    expect(again.kind).toBe("existing");
+    expect("order" in again && again.order.amount).toBe(625_000);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: r.order.id } })).amount).toBe(625_000);
+
+    // Onlayn to'lov boshlangan (kutilayotgan tranzaksiya) — summa o'zgarmaydi
+    await prisma.paymentTransaction.create({ data: { provider: "click", externalId: "t1", orderId: r.order.id, amount: 625_000 } });
+    await prisma.product.update({ where: { code: "4b" }, data: { price: 500_000 } });
+    const busy = await createOrder(u.id, await product("4b"), null);
+    expect("order" in busy && busy.order.amount).toBe(625_000);
+
+    // Chek yuborilgan — admin eski summa bo'yicha tekshiradi, o'zgarmaydi
+    await prisma.paymentTransaction.updateMany({ data: { state: -1 } });
+    expect((await attachReceipt(r.order.id, file("p1"))).kind).toBe("ok");
+    const review = await createOrder(u.id, await product("4b"), null);
+    expect("order" in review && review.order.amount).toBe(625_000);
   });
 
   it("T-11 / BR-04: 4-urinish qabul qilinmaydi", async () => {

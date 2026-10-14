@@ -7,6 +7,7 @@ import { returnUrl } from "../services/payments/common";
 import { parsePayRef, payProviderEnabled, type PayProvider } from "../services/payments/payLink";
 import { paymeCheckoutUrl } from "../services/payments/payme";
 import { userLang } from "../services/users";
+import { applyPriceDrop } from "../services/orders";
 import type { BotRuntime } from "./runtime";
 
 /**
@@ -20,11 +21,13 @@ export function mountPayRedirect(app: Express, rt: BotRuntime): void {
   app.get("/pay/:provider/:ref", limiter, async (req, res) => {
     const provider = String(req.params.provider);
     const orderId = provider === "payme" || provider === "click" ? parsePayRef(provider, String(req.params.ref)) : null;
-    const order =
+    const found =
       orderId !== null && payProviderEnabled(provider as PayProvider)
-        ? await prisma.order.findUnique({ where: { id: orderId }, include: { user: { select: { language: true } } } })
+        ? await prisma.order.findUnique({ where: { id: orderId }, include: { user: { select: { language: true } }, product: { select: { price: true } } } })
         : null;
-    if (!order) return void res.status(404).type("text/plain").send("Havola noto'g'ri yoki eskirgan");
+    if (!found) return void res.status(404).type("text/plain").send("Havola noto'g'ri yoki eskirgan");
+    // To'lov ekrani ochilgandan keyin chegirma qo'yilgan bo'lsa — yangi narx
+    const order = await applyPriceDrop(found, found.product);
 
     const back = returnUrl((await botUsername(rt.api)) ?? undefined);
     res.setHeader("Cache-Control", "no-store");

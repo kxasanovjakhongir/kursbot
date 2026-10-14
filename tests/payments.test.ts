@@ -322,6 +322,166 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
       expect((await complete("-5017")).body.error).toBe(-9);
       expect(kicked).toEqual([]);
     });
+
+    describe("chekka holatlar", () => {
+      const post = (path: "prepare" | "complete", body: Record<string, string>) => request(app).post(`/api/payments/click/${path}`).type("form").send(body);
+      const prepare = (orderId: bigint, id: string, amount?: string) => post("prepare", signed({ ...base(orderId, id, amount), action: "0" }, 0));
+      const complete = (orderId: bigint, id: string, prepareId: unknown, extra: Record<string, string> = {}, amount?: string) =>
+        post("complete", signed({ ...base(orderId, id, amount), action: "1", merchant_prepare_id: String(prepareId), ...extra }, 1));
+      const freshOrder = async () => {
+        await prisma.accessGrant.deleteMany({});
+        return newOrder();
+      };
+      const orderOf = (id: bigint) => prisma.order.findUniqueOrThrow({ where: { id } });
+      const txOf = (externalId: string) => prisma.paymentTransaction.findFirst({ where: { provider: "click", externalId } });
+
+      it("noto'g'ri so'rovlar: maydon yetishmasa -8, begona servis -8, bosqich mos emas -3, buyurtma yo'q -5", async () => {
+        const order = await freshOrder();
+        const { sign_time: _omit, ...noTime } = { ...base(order.id, "e1"), action: "0" };
+        expect((await post("prepare", { ...noTime, sign_string: "x" })).body.error).toBe(-8);
+        expect((await post("prepare", {})).body).toMatchObject({ error: -8, click_trans_id: null, merchant_trans_id: null });
+
+        // Imzo to'g'ri, lekin servis bizniki emas
+        expect((await post("prepare", signed({ ...base(order.id, "e1"), service_id: "99999", action: "0" }, 0))).body.error).toBe(-8);
+        // Prepare so'rovi (action=0) complete manziliga
+        expect((await post("complete", signed({ ...base(order.id, "e1"), action: "0", merchant_prepare_id: "1" }, 1))).body.error).toBe(-3);
+        // Complete, lekin merchant_prepare_id yo'q
+        expect((await post("complete", signed({ ...base(order.id, "e1"), action: "1" }, 1))).body.error).toBe(-8);
+
+        expect((await prepare(999_999n, "e1")).body.error).toBe(-5);
+        expect((await post("prepare", signed({ ...base(order.id, "e1"), merchant_trans_id: "abc", action: "0" }, 0))).body.error).toBe(-5);
+        expect((await post("prepare", signed({ ...base(order.id, "e1"), merchant_trans_id: "0", action: "0" }, 0))).body.error).toBe(-5);
+
+        // Hech biri tranzaksiya yaratmagan, buyurtma o'zgarmagan
+        expect(await txOf("e1")).toBeNull();
+        expect((await orderOf(order.id)).status).toBe("new");
+      });
+
+      it("JSON ko'rinishidagi so'rov va katta harfli imzo ham qabul qilinadi", async () => {
+        const order = await freshOrder();
+        const body = signed({ ...base(order.id, "e2"), action: "0" }, 0);
+        const res = await request(app).post("/api/payments/click/prepare").send({ ...body, sign_string: body.sign_string.toUpperCase() });
+        expect(res.body.error).toBe(0);
+      });
+
+      it("to'lovga yaroqsiz buyurtma: chek tekshiruvda, muddati o'tgan, bekor qilingan — -5", async () => {
+        const order = await freshOrder();
+        for (const [n, data] of [
+          [1, { status: "receipt_sent" as const }],
+          [2, { status: "new" as const, expiresAt: new Date(Date.now() - 60_000) }],
+          [3, { status: "cancelled" as const }],
+          [4, { status: "expired" as const }],
+        ] as const) {
+          await prisma.order.update({ where: { id: order.id }, data });
+          expect([n, (await prepare(order.id, `e3-${n}`)).body.error]).toEqual([n, -5]);
+        }
+        expect(await prisma.paymentTransaction.count({ where: { orderId: order.id } })).toBe(0);
+      });
+
+      it("rad etilgan buyurtmani (chek qaytarilgan) Click orqali to'lash mumkin", async () => {
+        const order = await freshOrder();
+        await prisma.order.update({ where: { id: order.id }, data: { status: "rejected", rejectReason: "Summa kam" } });
+        const prep = await prepare(order.id, "e4");
+        expect(prep.body.error).toBe(0);
+        expect((await complete(order.id, "e4", prep.body.merchant_prepare_id)).body.error).toBe(0);
+        expect(await orderOf(order.id)).toMatchObject({ status: "approved", paymentMethod: "click", rejectReason: null });
+      });
+
+      it("summa ko'rinishlari: 150000.00 qabul qilinadi; tiyinli yoki noto'g'ri summa -2", async () => {
+        const order = await freshOrder();
+        for (const bad of ["150000.5", "149999.99", "150000.001", "1e5", "-150000", "0"]) {
+          expect([bad, (await prepare(order.id, "e5", bad)).body.error]).toEqual([bad, -2]);
+        }
+        const prep = await prepare(order.id, "e5", "150000.00");
+        expect(prep.body.error).toBe(0);
+        // Complete'da summa boshqa — rad, buyurtma ochiq
+        expect((await complete(order.id, "e5", prep.body.merchant_prepare_id, {}, "1000")).body.error).toBe(-2);
+        expect((await orderOf(order.id)).status).toBe("new");
+        expect((await complete(order.id, "e5", prep.body.merchant_prepare_id, {}, "150000.0")).body.error).toBe(0);
+        expect((await orderOf(order.id)).status).toBe("approved");
+      });
+
+      it("takroriy prepare — o'sha tranzaksiya; yangi urinish eskisini bekor qiladi", async () => {
+        const order = await freshOrder();
+        const first = await prepare(order.id, "e6a");
+        const repeat = await prepare(order.id, "e6a");
+        expect(repeat.body).toMatchObject({ error: 0, merchant_prepare_id: first.body.merchant_prepare_id });
+        expect(await prisma.paymentTransaction.count({ where: { orderId: order.id } })).toBe(1);
+
+        const second = await prepare(order.id, "e6b");
+        expect(second.body.error).toBe(0);
+        expect(second.body.merchant_prepare_id).not.toBe(first.body.merchant_prepare_id);
+        expect((await txOf("e6a"))?.state).toBe(-1);
+        // Bekor qilingan urinish endi to'lanmaydi va qayta prepare ham qilinmaydi
+        expect((await complete(order.id, "e6a", first.body.merchant_prepare_id)).body.error).toBe(-9);
+        expect((await prepare(order.id, "e6a")).body.error).toBe(-9);
+        expect((await orderOf(order.id)).status).toBe("new");
+
+        expect((await complete(order.id, "e6b", second.body.merchant_prepare_id)).body.error).toBe(0);
+        expect((await orderOf(order.id)).status).toBe("approved");
+      });
+
+      it("complete begona ma'lumot bilan: boshqa tranzaksiya, boshqa buyurtma, buzilgan imzo", async () => {
+        const order = await freshOrder();
+        const prep = await prepare(order.id, "e7");
+        const id = prep.body.merchant_prepare_id;
+        // merchant_prepare_id to'g'ri, click_trans_id boshqa
+        expect((await complete(order.id, "e7-other", id)).body.error).toBe(-6);
+        // Tranzaksiya to'g'ri, buyurtma raqami boshqa
+        expect((await complete(order.id + 1000n, "e7", id)).body.error).toBe(-6);
+        expect((await complete(order.id, "e7", "abc")).body.error).toBe(-6);
+        // Imzodan keyin summa almashtirilgan
+        const tampered = { ...signed({ ...base(order.id, "e7"), action: "1", merchant_prepare_id: String(id) }, 1), amount: "1" };
+        expect((await post("complete", tampered)).body.error).toBe(-1);
+        expect((await orderOf(order.id)).status).toBe("new");
+        expect((await txOf("e7"))?.state).toBe(1);
+      });
+
+      it("bir vaqtda kelgan 6 ta complete — bir marta to'lanadi, bitta kirish", async () => {
+        const order = await freshOrder();
+        const prep = await prepare(order.id, "e8");
+        const results = await Promise.all(Array.from({ length: 6 }, () => complete(order.id, "e8", prep.body.merchant_prepare_id)));
+        const codes = results.map((r) => r.body.error as number).sort((a, b) => b - a);
+        expect(codes).toEqual([0, -4, -4, -4, -4, -4]);
+        await vi.waitFor(async () => expect(await prisma.accessGrant.count({ where: { orderId: order.id } })).toBe(1));
+        expect(await prisma.paymentTransaction.count({ where: { orderId: order.id, state: 2 } })).toBe(1);
+      });
+
+      it("prepare'dan keyin buyurtma muddati o'tsa yoki mijoz bekor qilsa ham — pul olingan, kirish beriladi", async () => {
+        for (const [n, data] of [
+          [1, { status: "expired" as const }],
+          [2, { status: "cancelled" as const }],
+        ] as const) {
+          const order = await freshOrder();
+          const prep = await prepare(order.id, `e9-${n}`);
+          await prisma.order.update({ where: { id: order.id }, data });
+          expect((await complete(order.id, `e9-${n}`, prep.body.merchant_prepare_id)).body.error).toBe(0);
+          expect(await orderOf(order.id)).toMatchObject({ status: "approved", paymentMethod: "click" });
+          await vi.waitFor(async () => expect(await prisma.accessGrant.count({ where: { orderId: order.id, revokedAt: null } })).toBe(1));
+        }
+      });
+
+      it("ikki marta to'lov: karta cheki tasdiqlangan buyurtmaga Click puli tushsa — kirish o'zgarmaydi, qaytarilsa ham", async () => {
+        const order = await freshOrder();
+        const prep = await prepare(order.id, "e10");
+        // Shu orada admin karta chekini tasdiqladi
+        await prisma.order.update({ where: { id: order.id }, data: { status: "approved", paidAt: new Date(), paymentMethod: "card" } });
+        const grant = await prisma.accessGrant.create({ data: { userId, productId, orderId: order.id } });
+
+        expect((await complete(order.id, "e10", prep.body.merchant_prepare_id)).body.error).toBe(0);
+        expect(await orderOf(order.id)).toMatchObject({ status: "approved", paymentMethod: "card" });
+        expect((await txOf("e10"))?.state).toBe(2);
+
+        // Ortiqcha to'lov qaytarildi — mijoz kanalda qoladi
+        kicked.length = 0;
+        expect((await complete(order.id, "e10", prep.body.merchant_prepare_id, { error: "-5017" })).body.error).toBe(-9);
+        await vi.waitFor(async () => expect((await txOf("e10"))?.state).toBe(-2));
+        await new Promise((r) => setTimeout(r, 200));
+        expect((await orderOf(order.id)).status).toBe("approved");
+        expect((await prisma.accessGrant.findUniqueOrThrow({ where: { id: grant.id } })).revokedAt).toBeNull();
+        expect(kicked).toEqual([]);
+      });
+    });
   });
 
   it("qisqa havola /pay/...: to'lov sahifasiga yo'naltiradi; noto'g'ri imzo yoki buyurtma — 404", async () => {

@@ -61,7 +61,7 @@ describe("onlayn to'lov: yordamchi funksiyalar", () => {
     const expected = createHash("md5").update(`112345click-secret710000${p.sign_time}`).digest("hex");
     expect(clickSign(p, 0)).toBe(expected);
     const url = new URL(clickCheckoutUrl(7n, 1000, { returnUrl: "https://t.me/test_bot" }));
-    expect(url.origin + url.pathname).toBe("https://my.click.uz/services/pay");
+    expect(url.origin + url.pathname).toBe("https://my.click.uz/services/pay/");
     expect(Object.fromEntries(url.searchParams)).toEqual({
       service_id: "12345",
       merchant_id: "6789",
@@ -489,7 +489,7 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     const res = await request(app).get(new URL(shortPayUrl("click", order.id)!).pathname);
     expect(res.status).toBe(302);
     const to = new URL(res.headers.location);
-    expect(to.origin + to.pathname).toBe("https://my.click.uz/services/pay");
+    expect(to.origin + to.pathname).toBe("https://my.click.uz/services/pay/");
     expect(Object.fromEntries(to.searchParams)).toMatchObject({ amount: "150000", transaction_param: order.id.toString(), return_url: "https://t.me/test_bot" });
 
     const payme = await request(app).get(new URL(shortPayUrl("payme", order.id)!).pathname);

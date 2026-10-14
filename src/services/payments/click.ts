@@ -59,7 +59,11 @@ function signOk(p: Record<string, unknown>, action: 0 | 1): boolean {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
-/** To'lov sahifasi: https://my.click.uz/services/pay?service_id=..&merchant_id=..&amount=..&transaction_param=<buyurtma> */
+/**
+ * To'lov sahifasi: https://my.click.uz/services/pay/?service_id=..&merchant_id=..&amount=..&transaction_param=<buyurtma>.
+ * Oxiridagi "/" ataylab: Click ilovasi iOS'da faqat "/services/pay/*" manzillarini o'zi ochadi (apple-app-site-association),
+ * Android'da esa my.click.uz ning barcha manzillarini. Ilova o'rnatilmagan bo'lsa — o'sha sahifa brauzerda ochiladi.
+ */
 export function clickCheckoutUrl(orderId: bigint, amountSum: number, opts: { returnUrl?: string } = {}): string {
   const q = new URLSearchParams({
     service_id: config.CLICK_SERVICE_ID ?? "",
@@ -68,7 +72,7 @@ export function clickCheckoutUrl(orderId: bigint, amountSum: number, opts: { ret
     transaction_param: orderId.toString(),
   });
   if (opts.returnUrl) q.set("return_url", opts.returnUrl);
-  return `https://my.click.uz/services/pay?${q.toString()}`;
+  return `https://my.click.uz/services/pay/?${q.toString()}`;
 }
 
 /** Click summasi buyurtma summasiga teng (tiyin aniqligida) */

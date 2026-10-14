@@ -28,6 +28,7 @@ import {
   Users,
   X,
   Clapperboard,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -48,6 +49,7 @@ const NAV: NavItem[] = [
   { to: "/telegram-users", label: "Telegram foydalanuvchilar", icon: Users },
   { to: "/receipts", label: "Cheklar", icon: Receipt, badge: "pending" },
   { to: "/orders", label: "Buyurtmalar", icon: ShoppingCart },
+  { to: "/payments", label: "Onlayn to'lovlar", icon: Wallet },
   { to: "/products", label: "Mahsulotlar", icon: Package, superOnly: true },
   { to: "/lessons", label: "Darslar (videolar)", icon: Clapperboard },
   { to: "/links", label: "Kampaniya linklari", icon: Link2 },

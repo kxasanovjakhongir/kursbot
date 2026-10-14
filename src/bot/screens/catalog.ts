@@ -147,7 +147,9 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
     clickEnabled() &&
       on("pay_click") && {
         label: ctx.label("btn_pay_click"),
-        url: shortPayUrl("click", order.id) ?? clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
+        // To'g'ridan-to'g'ri my.click.uz: telefon uni Click ilovasida ochadi. O'z domenimiz orqali yo'naltirilsa
+        // (qisqa havola) ilova ochilmay, brauzer sahifasi qolardi
+        url: clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
         style: "primary" as const,
       },
   ].filter((b): b is { label: string; url: string; style?: "primary" } => !!b);

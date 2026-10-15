@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import { Writable } from "node:stream";
+import { setFlagsFromString } from "node:v8";
+import { runInNewContext } from "node:vm";
 import type { Api } from "grammy";
 import type { Express } from "express";
 import { prisma } from "../src/db";
@@ -152,6 +154,10 @@ describe.skipIf(!enabled)("foydalanuvchilar eksporti va darslar API", () => {
   });
 
   it("katta baza (20 000): fayl oqim bilan yoziladi, xotira keskin o'smaydi", async () => {
+    // Majburiy GC (vitest --expose-gc siz): V8 bayrog'i yoqiladi va gc() yangi kontekstdan olinadi
+    setFlagsFromString("--expose-gc");
+    const gc = runInNewContext("gc") as () => void;
+    const LIVE_HEAP_LIMIT = 60 * 1024 * 1024;
     await prisma.$executeRawUnsafe(
       `INSERT INTO users (telegram_id, first_name, username, phone, created_at, last_seen_at)
        SELECT 2000000 + g, 'User ' || g, 'user' || g, '+99890' || lpad(g::text, 7, '0'), now(), now() FROM generate_series(1, 20000) g`,
@@ -166,14 +172,20 @@ describe.skipIf(!enabled)("foydalanuvchilar eksporti va darslar API", () => {
           cb();
         },
       });
+      // Tirik xotira o'lchanadi: har o'lchovdan oldin GC. Axlat bilan birga o'lchansa natija GC vaqtiga
+      // bog'liq bo'lib qolardi (PDF: bir xil kodda 84–141 MB) va CI tasodifan yiqilardi
+      gc();
       const before = process.memoryUsage().heapUsed;
       let peak = before;
-      const probe = setInterval(() => (peak = Math.max(peak, process.memoryUsage().heapUsed)), 5);
+      const probe = setInterval(() => {
+        gc();
+        peak = Math.max(peak, process.memoryUsage().heapUsed);
+      }, 50);
       await write(sink);
       clearInterval(probe);
       expect(bytes).toBeGreaterThan(100_000);
-      // Oqim + bo'laklar: 20 000 qatorda ham heap o'sishi (axlat bilan birga) cheklangan
-      expect([format, peak - before < 150 * 1024 * 1024]).toEqual([format, true]);
+      // Oqim + bo'laklar: 20 000 qatorda ham butun fayl yoki qatorlar xotirada to'planmaydi
+      expect([format, peak - before < LIVE_HEAP_LIMIT]).toEqual([format, true]);
     }
     await prisma.$executeRawUnsafe(`DELETE FROM users WHERE telegram_id > 2000000`);
   }, 120_000);

@@ -11,6 +11,7 @@ import TelegramUsersPage from "./pages/TelegramUsersPage";
 import TelegramUserDetailPage from "./pages/TelegramUserDetailPage";
 import MessagesPage from "./pages/MessagesPage";
 import OrdersPage from "./pages/OrdersPage";
+import PaymentsPage from "./pages/PaymentsPage";
 import OrderDetailPage from "./pages/OrderDetailPage";
 import BroadcastPage from "./pages/BroadcastPage";
 import BroadcastHistoryPage from "./pages/BroadcastHistoryPage";
@@ -61,6 +62,7 @@ export default function App() {
               <Route path="links" element={<LinksPage />} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="orders/:id" element={<OrderDetailPage />} />
+              <Route path="payments" element={<PaymentsPage />} />
               <Route path="broadcast" element={<BroadcastPage />} />
               <Route path="broadcast/history" element={<BroadcastHistoryPage />} />
               <Route path="broadcast/:id" element={<BroadcastDetailPage />} />

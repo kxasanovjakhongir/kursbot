@@ -68,13 +68,26 @@ const fail = (e: { code: number; message: Lang }, data?: string): never => {
 /** Authorization: Basic base64("Paycom:<kalit>"); kalit — PAYME_TEST_MODE ga qarab test yoki haqiqiy */
 export function checkPaymeAuth(header: string | undefined): boolean {
   const key = paymeKey();
-  if (!key || !header?.startsWith("Basic ")) return false;
+  // VAQTINCHA: Payme qaysi kalitni yuborayotganini ko'rish uchun. Kalitning o'zi yozilmaydi — faqat uzunligi va chetlari
+  if (!key || !header?.startsWith("Basic ")) {
+    logger.warn({ hasHeader: !!header, hasKey: !!key }, "PAYME AUTH: header yo'q yoki Basic emas");
+    return false;
+  }
   const decoded = Buffer.from(header.slice(6).trim(), "base64").toString("utf8");
   const sep = decoded.indexOf(":");
   if (sep < 0) return false;
-  const got = Buffer.from(decoded.slice(sep + 1));
+  const login = decoded.slice(0, sep);
+  const gotStr = decoded.slice(sep + 1);
+  const got = Buffer.from(gotStr);
   const want = Buffer.from(key);
-  return got.length === want.length && timingSafeEqual(got, want);
+  const ok = got.length === want.length && timingSafeEqual(got, want);
+  if (!ok) {
+    logger.warn(
+      { login, len: gotStr.length, start: gotStr.slice(0, 4), end: gotStr.slice(-4), wantLen: key.length, testMode: config.PAYME_TEST_MODE },
+      "PAYME AUTH: kalit mos emas",
+    );
+  }
+  return ok;
 }
 
 /** Checkout havolasi: https://checkout.paycom.uz/<base64(m=..;ac.order_id=..;a=..;c=..)> */

@@ -49,6 +49,20 @@ describe("onlayn to'lov: yordamchi funksiyalar", () => {
     expect(checkPaymeAuth("Bearer x")).toBe(false);
   });
 
+  it("Payme: test rejimida PAYME_TEST_KEY, haqiqiy rejimda PAYME_KEY", () => {
+    cfg.PAYME_TEST_KEY = "sandbox-key";
+    try {
+      expect(checkPaymeAuth(basic("sandbox-key"))).toBe(true);
+      expect(checkPaymeAuth(basic(TEST_PAYMENTS.PAYME_KEY))).toBe(false);
+      cfg.PAYME_TEST_MODE = false;
+      expect(checkPaymeAuth(basic(TEST_PAYMENTS.PAYME_KEY))).toBe(true);
+      expect(checkPaymeAuth(basic("sandbox-key"))).toBe(false);
+    } finally {
+      cfg.PAYME_TEST_KEY = undefined;
+      cfg.PAYME_TEST_MODE = TEST_PAYMENTS.PAYME_TEST_MODE;
+    }
+  });
+
   it("Payme checkout havolasi: kassa, buyurtma va summa tiyinda", () => {
     const url = paymeCheckoutUrl(15n, 120000, { returnUrl: "https://t.me/test_bot", lang: "uz" });
     expect(url.startsWith("https://checkout.test.paycom.uz/")).toBe(true);

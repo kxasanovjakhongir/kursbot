@@ -113,8 +113,10 @@ const schema = z.object({
   // --- Onlayn to'lov: Payme (Merchant API) ---
   // Kabinet (merchant.paycom.uz) → kassa ID va kalit. Ikkalasi bo'lsa Payme yoqiladi
   PAYME_MERCHANT_ID: optionalStr,
-  // Kassa kaliti (test rejimida — test kaliti). Payme so'rovlari "Basic Paycom:<kalit>" bilan tekshiriladi
+  // Kassa kaliti (haqiqiy). Payme so'rovlari "Basic Paycom:<kalit>" bilan tekshiriladi
   PAYME_KEY: optionalStr,
+  // Test kaliti (sandbox). PAYME_TEST_MODE=true da shu ishlatiladi; bo'sh bo'lsa — PAYME_KEY
+  PAYME_TEST_KEY: optionalStr,
   // Kassadagi hisob maydoni nomi (kabinetda "order_id" deb sozlang)
   PAYME_ACCOUNT_FIELD: z
     .string()
@@ -162,7 +164,9 @@ export const config = load();
 export type Config = typeof config;
 
 /** Payme sozlangan (kassa ID va kalit bor) */
-export const paymeEnabled = (): boolean => !!(config.PAYME_MERCHANT_ID && config.PAYME_KEY);
+/** Payme so'rovlarini tekshiradigan kalit: test rejimida test kaliti (bo'lmasa — asosiy kalit) */
+export const paymeKey = (): string | undefined => (config.PAYME_TEST_MODE ? (config.PAYME_TEST_KEY ?? config.PAYME_KEY) : config.PAYME_KEY);
+export const paymeEnabled = (): boolean => !!(config.PAYME_MERCHANT_ID && paymeKey());
 /** Click sozlangan (service ID, merchant ID va secret key bor) */
 export const clickEnabled = (): boolean => !!(config.CLICK_SERVICE_ID && config.CLICK_MERCHANT_ID && config.CLICK_SECRET_KEY);
 /** Kamida bitta onlayn to'lov tizimi yoqilgan — bunda karta bo'lmasa ham buyurtma yaratiladi */

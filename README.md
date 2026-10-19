@@ -76,10 +76,10 @@ Karta + chek usuli ham ishlashda davom etadi; faol karta bo'lmasa — buyurtma f
 
 | Tizim | Kabinetda ko'rsatiladigan URL | `.env` |
 |---|---|---|
-| Payme (Merchant API) | `https://<domen>/api/payments/payme` | `PAYME_MERCHANT_ID`, `PAYME_KEY`, `PAYME_ACCOUNT_FIELD` (standart `order_id`), `PAYME_TEST_MODE` |
+| Payme (Merchant API) | `https://<domen>/api/payments/payme` | `PAYME_MERCHANT_ID`, `PAYME_KEY`, `PAYME_TEST_KEY` (sandbox), `PAYME_ACCOUNT_FIELD` (standart `order_id`), `PAYME_TEST_MODE` |
 | Click (Shop API) | Prepare: `https://<domen>/api/payments/click/prepare` · Complete: `https://<domen>/api/payments/click/complete` | `CLICK_SERVICE_ID`, `CLICK_MERCHANT_ID`, `CLICK_SECRET_KEY` |
 
-- **Payme**: kassada hisob maydoni `order_id` (buyurtma raqami) bo'lishi kerak. Avval `PAYME_TEST_MODE=true` va test kaliti bilan
+- **Payme**: kassada hisob maydoni `order_id` (buyurtma raqami) bo'lishi kerak. Avval `PAYME_TEST_MODE=true` va `PAYME_TEST_KEY` (test kaliti) bilan
   [sandbox](https://test.paycom.uz) testlaridan o'ting. Fiskal chek kerak bo'lsa `PAYME_IKPU` (MXIK) va `PAYME_PACKAGE_CODE` ni to'ldiring.
 - **Click**: `merchant_trans_id` = buyurtma raqami. Imzo `CLICK_SECRET_KEY` bilan tekshiriladi.
 - Bitta buyurtmaga bir vaqtda faqat bitta kutilayotgan va bitta to'langan tranzaksiya bo'ladi (bazadagi unique indekslar).

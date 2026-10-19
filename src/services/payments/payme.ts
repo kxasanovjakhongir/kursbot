@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { PaymentTransaction } from "@prisma/client";
 import { prisma } from "../../db";
-import { config } from "../../config";
+import { config, paymeKey } from "../../config";
 import { logger } from "../../lib/logger";
 import { checkPayable, isUniqueViolation, markOrderPaidOnline, parseOrderId, TX_STATE, type PayableResult } from "./common";
 
@@ -65,9 +65,9 @@ const fail = (e: { code: number; message: Lang }, data?: string): never => {
   throw new PaymeFault({ code: e.code, message: e.message, ...(data ? { data } : {}) });
 };
 
-/** Authorization: Basic base64("Paycom:<kalit>") */
+/** Authorization: Basic base64("Paycom:<kalit>"); kalit — PAYME_TEST_MODE ga qarab test yoki haqiqiy */
 export function checkPaymeAuth(header: string | undefined): boolean {
-  const key = config.PAYME_KEY;
+  const key = paymeKey();
   if (!key || !header?.startsWith("Basic ")) return false;
   const decoded = Buffer.from(header.slice(6).trim(), "base64").toString("utf8");
   const sep = decoded.indexOf(":");

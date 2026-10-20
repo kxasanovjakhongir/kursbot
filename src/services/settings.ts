@@ -27,6 +27,8 @@ export const DEFAULT_SETTINGS = {
   course_name_max_length: 100,
   // Bot tugmalarining standartdan farq qiladigan holatlari: { "home.help": false } (services/buttons.ts)
   button_states: {} as Record<string, boolean>,
+  // Tugma ranglari: faqat standartdan farq qiladiganlari ("none" — rangsiz). services/buttons.ts
+  button_colors: {} as Record<string, string>,
   support_username: (config.SUPPORT_USERNAME ? normalizeTelegramUsername(config.SUPPORT_USERNAME) : null) as string | null,
 };
 

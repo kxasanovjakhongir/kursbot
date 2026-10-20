@@ -264,6 +264,27 @@ export interface Order {
 export type PaymentMethod = "card" | "payme" | "click";
 
 /** Onlayn to'lov tranzaksiyasi. state: 1 kutilmoqda, 2 to'langan, -1 bekor, -2 qaytarilgan */
+/** Payme / Click so'rovi va bizning javob (tranzaksiya tarixi). result: "ok" yoki xato kodi */
+export interface PaymentTxEvent {
+  method: string;
+  result: string;
+  at: string;
+  note?: string | null;
+  amount?: string | number | null;
+  payme_time?: number;
+  reason?: number;
+  account?: Record<string, string>;
+  click_error?: string | null;
+  click_error_note?: string | null;
+  click_paydoc_id?: string | null;
+  sign_time?: string | null;
+}
+
+export interface PaymentTxMeta {
+  click_paydoc_id?: string | null;
+  events?: PaymentTxEvent[];
+}
+
 export interface PaymentTx {
   id: string;
   provider: "payme" | "click";
@@ -272,16 +293,55 @@ export interface PaymentTx {
   /** Payme bekor qilish sababi (1–10) yoki Click xato kodi */
   reason: number | null;
   amount: number;
-  meta: { click_paydoc_id?: string | null } | null;
+  /** Payme: CreateTransaction.time (ms) */
+  providerTime: string | null;
+  meta: PaymentTxMeta | null;
   createdAt: string;
   performedAt: string | null;
   cancelledAt: string | null;
+  updatedAt: string;
   order: {
     id: string;
     status: OrderStatus;
+    amount: number;
     paymentMethod: PaymentMethod;
-    user: { id: string; firstName: string | null; lastName: string | null; username: string | null; phone: string | null };
-    product: { title: string };
+    createdAt: string;
+    paidAt: string | null;
+    user: { id: string; telegramId: string; firstName: string | null; lastName: string | null; username: string | null; phone: string | null };
+    product: { id: number; code: string; title: string };
+  };
+}
+
+export interface PaymentTxDetail extends Omit<PaymentTx, "order"> {
+  orderId: string;
+  order: {
+    id: string;
+    status: OrderStatus;
+    amount: number;
+    discount: number;
+    source: string | null;
+    paymentMethod: PaymentMethod;
+    attempts: number;
+    createdAt: string;
+    expiresAt: string;
+    paidAt: string | null;
+    reviewedAt: string | null;
+    cancelledAt: string | null;
+    cancelReason: string | null;
+    user: {
+      id: string;
+      telegramId: string;
+      firstName: string | null;
+      lastName: string | null;
+      username: string | null;
+      phone: string | null;
+      language: string | null;
+      isBlocked: boolean;
+      createdAt: string;
+    };
+    product: { id: number; code: string; title: string; price: number };
+    /** Shu buyurtma bo'yicha barcha urinishlar (Payme va Click), eskisi birinchi */
+    transactions: Pick<PaymentTx, "id" | "provider" | "externalId" | "state" | "reason" | "amount" | "createdAt" | "performedAt" | "cancelledAt">[];
   };
 }
 

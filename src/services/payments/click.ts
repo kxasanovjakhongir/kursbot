@@ -1,8 +1,9 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import type { PaymentTransaction } from "@prisma/client";
 import { prisma } from "../../db";
 import { config } from "../../config";
 import { logger } from "../../lib/logger";
-import { checkPayable, isUniqueViolation, markOrderPaidOnline, parseOrderId, TX_STATE } from "./common";
+import { appendTxEvent, checkPayable, isUniqueViolation, markOrderPaidOnline, parseOrderId, TX_STATE, txEvent, type TxEvent } from "./common";
 
 /**
  * Click Shop API: https://docs.click.uz/click-api-request/
@@ -111,6 +112,25 @@ export async function handleClick(body: unknown, expectedAction: 0 | 1): Promise
 
 type Reply = (e: ClickError, extra?: Record<string, unknown>) => ClickOutcome;
 
+/** Click so'rovi va bizning javob — panelda tranzaksiya tarixi (imzo yozilmaydi) */
+function clickEvent(p: Record<string, unknown>, action: 0 | 1, out: ClickOutcome): TxEvent {
+  const code = Number(out.body.error ?? 0);
+  return txEvent(action === 0 ? "prepare" : "complete", code === 0 ? "ok" : String(code), {
+    note: typeof out.body.error_note === "string" ? out.body.error_note : null,
+    amount: str(p.amount) || null,
+    click_error: str(p.error) || null,
+    click_error_note: str(p.error_note) || null,
+    click_paydoc_id: str(p.click_paydoc_id) || null,
+    sign_time: str(p.sign_time) || null,
+  });
+}
+
+/** Tarixga yozish to'lovni to'xtatmaydi */
+async function recordClick(txId: bigint, p: Record<string, unknown>, action: 0 | 1, out: ClickOutcome): Promise<ClickOutcome> {
+  await appendTxEvent(prisma, txId, clickEvent(p, action, out)).catch((err: unknown) => logger.warn({ err, txId: String(txId) }, "Click tarixi yozilmadi"));
+  return out;
+}
+
 async function prepare(p: Record<string, unknown>, reply: Reply): Promise<ClickOutcome> {
   const clickTransId = str(p.click_trans_id);
   const res = await checkPayable(parseOrderId(p.merchant_trans_id));
@@ -118,9 +138,13 @@ async function prepare(p: Record<string, unknown>, reply: Reply): Promise<ClickO
   // Click so'rovni takrorlasa — o'sha tranzaksiya
   const existing = await prisma.paymentTransaction.findUnique({ where: { provider_externalId: { provider: "click", externalId: clickTransId } } });
   if (existing) {
-    if (existing.state === TX_STATE.paid) return reply(CLICK_ERRORS.alreadyPaid);
-    if (existing.state !== TX_STATE.pending) return reply(CLICK_ERRORS.txCancelled);
-    return reply(CLICK_ERRORS.ok, { merchant_prepare_id: Number(existing.id) });
+    const out =
+      existing.state === TX_STATE.paid
+        ? reply(CLICK_ERRORS.alreadyPaid)
+        : existing.state !== TX_STATE.pending
+          ? reply(CLICK_ERRORS.txCancelled)
+          : reply(CLICK_ERRORS.ok, { merchant_prepare_id: Number(existing.id) });
+    return recordClick(existing.id, p, 0, out);
   }
 
   if (!res.ok) return reply(res.reason === "paid" ? CLICK_ERRORS.alreadyPaid : CLICK_ERRORS.orderNotFound);
@@ -144,7 +168,7 @@ async function prepare(p: Record<string, unknown>, reply: Reply): Promise<ClickO
         meta: { click_paydoc_id: str(p.click_paydoc_id) || null },
       },
     });
-    return reply(CLICK_ERRORS.ok, { merchant_prepare_id: Number(tx.id) });
+    return recordClick(tx.id, p, 0, reply(CLICK_ERRORS.ok, { merchant_prepare_id: Number(tx.id) }));
   } catch (err) {
     if (isUniqueViolation(err)) return reply(CLICK_ERRORS.updateFailed);
     throw err;
@@ -157,6 +181,10 @@ async function complete(p: Record<string, unknown>, reply: Reply): Promise<Click
     ? await prisma.paymentTransaction.findFirst({ where: { id: prepareId, provider: "click", externalId: str(p.click_trans_id) } })
     : null;
   if (!tx || tx.orderId.toString() !== str(p.merchant_trans_id)) return reply(CLICK_ERRORS.txNotFound);
+  return recordClick(tx.id, p, 1, await completeFound(p, reply, tx));
+}
+
+async function completeFound(p: Record<string, unknown>, reply: Reply, tx: PaymentTransaction): Promise<ClickOutcome> {
   const ids = { merchant_confirm_id: Number(tx.id) };
 
   const clickError = Number(str(p.error) || "0");

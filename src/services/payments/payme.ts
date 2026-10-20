@@ -3,7 +3,7 @@ import type { PaymentTransaction } from "@prisma/client";
 import { prisma } from "../../db";
 import { config, paymeKeys } from "../../config";
 import { logger } from "../../lib/logger";
-import { checkPayable, isUniqueViolation, markOrderPaidOnline, parseOrderId, TX_STATE, type PayableResult } from "./common";
+import { appendTxEvent, checkPayable, isUniqueViolation, markOrderPaidOnline, parseOrderId, TX_STATE, txEvent, type PayableResult } from "./common";
 
 /**
  * Payme Merchant API (JSON-RPC 2.0): https://developer.help.paycom.uz/metody-merchant-api/
@@ -325,6 +325,36 @@ export function paymeProtocolError(error: { code: number; message: Lang }, id: u
   return { jsonrpc: "2.0", id, error: { code: error.code, message: error.message } };
 }
 
+/** Tranzaksiya tarixiga yoziladigan metodlar (CheckTransaction / GetStatement — faqat o'qish) */
+const TRACKED = new Set(["CreateTransaction", "PerformTransaction", "CancelTransaction"]);
+
+/** Payme so'rovi va bizning javob — panelda tranzaksiya tarixi. Yozilmasa to'lov to'xtamaydi */
+async function recordPayme(method: string, params: Record<string, unknown>, out: PaymeOutcome): Promise<void> {
+  const externalId = typeof params.id === "string" ? params.id : null;
+  if (!externalId) return;
+  try {
+    const tx = await prisma.paymentTransaction.findUnique({ where: { provider_externalId: { provider: "payme", externalId } }, select: { id: true } });
+    if (!tx) return;
+    const account =
+      params.account && typeof params.account === "object"
+        ? Object.fromEntries(Object.entries(params.account as Record<string, unknown>).slice(0, 10).map(([k, v]) => [k.slice(0, 32), String(v).slice(0, 64)]))
+        : undefined;
+    await appendTxEvent(
+      prisma,
+      tx.id,
+      txEvent(method, out.body.error ? String(out.body.error.code) : "ok", {
+        note: out.body.error?.message.uz ?? null,
+        ...(typeof params.amount === "number" && { amount: params.amount }),
+        ...(typeof params.time === "number" && { payme_time: params.time }),
+        ...(typeof params.reason === "number" && { reason: params.reason }),
+        ...(account && { account }),
+      }),
+    );
+  } catch (err) {
+    logger.warn({ err, method, externalId }, "Payme tarixi yozilmadi");
+  }
+}
+
 /** Bitta Payme so'rovini qayta ishlaydi. Auth tekshiruvi ham shu yerda (Payme xato formatida javob kutadi) */
 export async function handlePayme(body: unknown, authHeader: string | undefined): Promise<PaymeOutcome> {
   const req = (body && typeof body === "object" ? body : {}) as PaymeRequest;
@@ -366,5 +396,11 @@ export async function handlePayme(body: unknown, authHeader: string | undefined)
     delete out.paidOrderId;
     delete out.refundedOrderId;
   }
+  if (typeof req.method === "string" && TRACKED.has(req.method) && req.params && typeof req.params === "object" && !isAuthError(out)) {
+    await recordPayme(req.method, req.params, out);
+  }
   return out;
 }
+
+/** Avtorizatsiyadan o'tmagan so'rov tarixga yozilmaydi (begona so'rov tranzaksiyani "iflos" qilmasin) */
+const isAuthError = (out: PaymeOutcome) => out.body.error?.code === PAYME_ERRORS.invalidAuth.code;

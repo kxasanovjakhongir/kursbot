@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Bot, InputFile } from "grammy";
 import type { Update, UserFromGetMe } from "grammy/types";
 import { prisma } from "../src/db";
+import { config } from "../src/config";
 import { createBot } from "../src/bot/bot";
 import { installEmptyTextGuard } from "../src/bot/emptyText";
 import type { BotContext } from "../src/bot/context";
@@ -239,6 +240,35 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     expect((await prisma.user.findUniqueOrThrow({ where: { telegramId: BigInt(AZIZ.id) } })).newsEnabled).toBe(false);
     await send(callback("set:news"));
     expect((await prisma.user.findUniqueOrThrow({ where: { telegramId: BigInt(AZIZ.id) } })).newsEnabled).toBe(true);
+  });
+
+  it("Payme va Click tugmalari to'g'ridan-to'g'ri to'lov tizimiga (ilovada ochiladi), qisqa havola orqali emas", async () => {
+    const cfg = config as unknown as Record<string, unknown>;
+    const online = {
+      PAYME_MERCHANT_ID: "5e730e8e0b852a417aa49ceb",
+      PAYME_KEY: "payme-key",
+      PAYME_TEST_MODE: false,
+      CLICK_SERVICE_ID: "12345",
+      CLICK_MERCHANT_ID: "6789",
+      CLICK_SECRET_KEY: "click-secret",
+    };
+    const saved = Object.fromEntries(Object.keys(online).map((k) => [k, cfg[k]]));
+    Object.assign(cfg, online);
+    try {
+      await send(text("/start"), contact("+998901234567"));
+      calls = [];
+      await send(callback("buy:4b"));
+      const order = await prisma.order.findFirstOrThrow();
+      const urls = buttons(lastScreen()).flatMap((b) => (b.url ? [b.url] : []));
+      const payme = urls.find((u) => u.startsWith("https://checkout.paycom.uz/"));
+      expect(payme).toBeDefined();
+      expect(Buffer.from(new URL(payme!).pathname.slice(1), "base64").toString()).toContain(`ac.order_id=${order.id};a=${order.amount * 100}`);
+      expect(urls.some((u) => u.startsWith("https://my.click.uz/services/pay/?"))).toBe(true);
+      // O'z domenimiz orqali yo'naltirish ilovani ochmaydi
+      expect(urls.some((u) => u.includes("/pay/payme/") || u.includes("/pay/click/"))).toBe(false);
+    } finally {
+      Object.assign(cfg, saved);
+    }
   });
 
   it("buyurtma: to'lov ma'lumoti (karta nusxalash), bekor qilish tasdiq bilan", async () => {

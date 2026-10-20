@@ -96,7 +96,11 @@ export function checkPaymeAuth(header: string | undefined): boolean {
   return ok;
 }
 
-/** Checkout havolasi: https://checkout.paycom.uz/<base64(m=..;ac.order_id=..;a=..;c=..)> */
+/**
+ * Checkout havolasi: https://checkout.paycom.uz/<base64(m=..;ac.order_id=..;a=..;c=..)>.
+ * checkout.paycom.uz Payme ilovasiga bog'langan (iOS apple-app-site-association: "/?*", Android assetlinks):
+ * ilova o'rnatilgan telefonda havola ilovada ochiladi, bo'lmasa — brauzerda.
+ */
 export function paymeCheckoutUrl(orderId: bigint, amountSum: number, opts: { returnUrl?: string; lang?: string } = {}): string {
   const parts = [`m=${config.PAYME_MERCHANT_ID}`, `ac.${config.PAYME_ACCOUNT_FIELD}=${orderId}`, `a=${amountSum * 100}`];
   if (opts.lang && ["uz", "ru", "en"].includes(opts.lang)) parts.push(`l=${opts.lang}`);

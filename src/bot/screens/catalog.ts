@@ -14,7 +14,6 @@ import { clickEnabled, paymeEnabled } from "../../config";
 import { paymeCheckoutUrl } from "../../services/payments/payme";
 import { clickCheckoutUrl } from "../../services/payments/click";
 import { returnUrl } from "../../services/payments/common";
-import { shortPayUrl } from "../../services/payments/payLink";
 import { paginate, type Screen } from "../ui/render";
 
 const PAGE_SIZE = 8;
@@ -136,19 +135,19 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   };
   const on = await buttonSwitch("payment");
   const back = returnUrl(ctx.me?.username);
-  // Havola: qisqa (o'z domenimiz, to'lov sahifasiga yo'naltiradi); ochiq manzil sozlanmagan bo'lsa — to'g'ridan-to'g'ri.
+  // Havolalar to'g'ridan-to'g'ri to'lov tizimiga: telefon ularni Payme / Click ilovasida ochadi (checkout.paycom.uz va
+  // my.click.uz ilovalarga bog'langan — universal / app links). O'z domenimiz orqali yo'naltirilsa (qisqa havola)
+  // ilova ochilmay, brauzer sahifasi qolardi. Ilova o'rnatilmagan bo'lsa — o'sha sahifa brauzerda ochiladi.
   // Click tugmasi ko'k (Click rangi) — Telegram tugma uslubi
   const online = [
     paymeEnabled() &&
       on("pay_payme") && {
         label: ctx.label("btn_pay_payme"),
-        url: shortPayUrl("payme", order.id) ?? paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }),
+        url: paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }),
       },
     clickEnabled() &&
       on("pay_click") && {
         label: ctx.label("btn_pay_click"),
-        // To'g'ridan-to'g'ri my.click.uz: telefon uni Click ilovasida ochadi. O'z domenimiz orqali yo'naltirilsa
-        // (qisqa havola) ilova ochilmay, brauzer sahifasi qolardi
         url: clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
         style: "primary" as const,
       },

@@ -186,6 +186,8 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     expect((await payme("CreateTransaction", { id: "pm-tx-1", time, amount, account })).body.result.transaction).toBe(txId);
     // Boshqa tranzaksiya shu buyurtmaga — band
     expect((await payme("CreateTransaction", { id: "pm-tx-2", time, amount, account })).body.error.code).toBe(-31053);
+    // Tekshiruv ham band deydi (sandbox: «Обрабатывается»)
+    expect((await payme("CheckPerformTransaction", { amount, account })).body.error.code).toBe(-31053);
 
     const performed = await payme("PerformTransaction", { id: "pm-tx-1" });
     expect(performed.body.result).toMatchObject({ transaction: txId, state: 2 });
@@ -237,6 +239,8 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     const tx = await prisma.paymentTransaction.findFirstOrThrow({ where: { externalId: "pm-old" } });
     expect(tx).toMatchObject({ state: -1, reason: 4 });
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("new");
+    // Muddati o'tgan tranzaksiya hisobni band qilmaydi
+    expect((await payme("CheckPerformTransaction", { amount: order.amount * 100, account })).body.result).toEqual({ allow: true });
   });
 
   it("Payme: to'lanmagan tranzaksiyani bekor qilish (-1), buyurtma ochiq qoladi", async () => {
@@ -246,6 +250,8 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     expect((await payme("CancelTransaction", { id: "pm-c", reason: 3 })).body.result.state).toBe(-1);
     expect((await payme("PerformTransaction", { id: "pm-c" })).body.error.code).toBe(-31008);
     expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status).toBe("new");
+    // Bekor qilingandan keyin hisob yana bo'sh — qayta to'lash mumkin
+    expect((await payme("CheckPerformTransaction", { amount: order.amount * 100, account })).body.result).toEqual({ allow: true });
   });
 
   describe("Click", () => {

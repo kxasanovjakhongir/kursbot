@@ -169,6 +169,10 @@ async function checkPerform(params: Record<string, unknown>) {
   const orderId = accountOrderId(params);
   const order = payableOrFail(await checkPayable(orderId));
   if (amount !== order.amount * 100) fail(PAYME_ERRORS.invalidAmount);
+  // Buyurtmada kutilayotgan Payme tranzaksiyasi bor — hisob band (Payme sandbox: «Обрабатывается»).
+  // Click dagi tugallanmagan urinish to'sqinlik qilmaydi: CreateTransaction uni bekor qiladi
+  const pending = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, provider: "payme", state: TX_STATE.pending } });
+  if (pending && !(await expireIfStale(pending))) fail(PAYME_ERRORS.orderBusy, config.PAYME_ACCOUNT_FIELD);
   const detail = await receiptDetail(order.id, amount);
   return { allow: true, ...(detail ? { detail } : {}) };
 }

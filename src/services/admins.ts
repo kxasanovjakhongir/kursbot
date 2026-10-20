@@ -2,6 +2,26 @@ import type { Admin, AdminRole, Prisma } from "@prisma/client";
 import { prisma } from "../db";
 import { config } from "../config";
 
+/**
+ * «Admin emas» javobi qisqa vaqt eslab qolinadi: update larning deyarli hammasi oddiy foydalanuvchilardan —
+ * har biri uchun admins jadvali o'qilmaydi. Admin topilgan javob ESLAB QOLINMAYDI: huquq olib tashlansa
+ * keyingi update dayoq kuchga kiradi (TZ 11.5). Yangi admin shu jarayonda darhol (invalidateAdminCache),
+ * boshqa instanslarda ko'pi bilan NOT_ADMIN_TTL_MS dan keyin tanildi.
+ */
+const NOT_ADMIN_TTL_MS = 30_000;
+const NOT_ADMIN_MAX = 100_000;
+const notAdmin = new Map<bigint, number>();
+
+export function invalidateAdminCache(): void {
+  notAdmin.clear();
+}
+
+function rememberNotAdmin(telegramId: bigint): void {
+  // Xotira chegaralangan: eng eski yozuv chiqariladi (Map — qo'shilish tartibida)
+  if (notAdmin.size >= NOT_ADMIN_MAX) notAdmin.delete(notAdmin.keys().next().value!);
+  notAdmin.set(telegramId, Date.now() + NOT_ADMIN_TTL_MS);
+}
+
 /** .env dagi birinchi super adminlarni bazaga yozadi (TZ 2.2) */
 export async function syncEnvSuperAdmins(): Promise<void> {
   for (const id of config.SUPERADMIN_IDS) {
@@ -11,13 +31,22 @@ export async function syncEnvSuperAdmins(): Promise<void> {
       update: { role: "superadmin", isActive: true },
     });
   }
+  invalidateAdminCache();
 }
 
-/** Huquq faqat Telegram ID bo'yicha, har safar qayta tekshiriladi (TZ 11.5) */
+/** Huquq faqat Telegram ID bo'yicha; admin bo'lsa har safar bazadan qayta tekshiriladi (TZ 11.5) */
 export async function getAdmin(telegramId: number | bigint | undefined): Promise<Admin | null> {
   if (telegramId === undefined) return null;
-  const admin = await prisma.admin.findUnique({ where: { telegramId: BigInt(telegramId) } });
-  return admin && admin.isActive ? admin : null;
+  const id = BigInt(telegramId);
+  const until = notAdmin.get(id);
+  if (until !== undefined) {
+    if (until > Date.now()) return null;
+    notAdmin.delete(id);
+  }
+  const admin = await prisma.admin.findUnique({ where: { telegramId: id } });
+  if (admin && admin.isActive) return admin;
+  rememberNotAdmin(id);
+  return null;
 }
 
 export function isSuper(admin: Admin | null | undefined): boolean {
@@ -25,11 +54,13 @@ export function isSuper(admin: Admin | null | undefined): boolean {
 }
 
 export async function addAdmin(telegramId: bigint, role: AdminRole, name?: string): Promise<Admin> {
-  return prisma.admin.upsert({
+  const admin = await prisma.admin.upsert({
     where: { telegramId },
     create: { telegramId, role, name: name ?? null },
     update: { role, isActive: true, ...(name ? { name } : {}) },
   });
+  invalidateAdminCache();
+  return admin;
 }
 
 export async function removeAdmin(telegramId: bigint): Promise<boolean> {
@@ -79,7 +110,9 @@ async function withSuperAdminGuard<T>(targetTelegramId: bigint, fn: (tx: Prisma.
 export async function setAdminRole(actorTelegramId: bigint, telegramId: bigint, role: AdminRole): Promise<Admin> {
   assertChangeable(actorTelegramId, telegramId);
   const change = (tx: Prisma.TransactionClient) => tx.admin.update({ where: { telegramId }, data: { role, isActive: true } });
-  return role === "admin" ? withSuperAdminGuard(telegramId, change) : prisma.$transaction(change);
+  const admin = await (role === "admin" ? withSuperAdminGuard(telegramId, change) : prisma.$transaction(change));
+  invalidateAdminCache();
+  return admin;
 }
 
 /** Adminlikdan olish (yozuv saqlanadi — audit tarixi uchun, isActive=false) */
@@ -127,5 +160,6 @@ export async function syncBotAdminFromPanel(
     create: { telegramId, role, name: user.name },
     update: { role, isActive: true, name: before?.name ?? user.name },
   });
+  invalidateAdminCache();
   return { granted: !before?.isActive || before.role !== role ? role : null };
 }

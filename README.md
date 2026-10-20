@@ -267,6 +267,12 @@ Webhook rejimida bot ishga tushganda `setWebhook` ni o'zi chaqiradi. So'rovlar `
 - **Takroriy update:** to'lov, buyurtma va chek oqimlari idempotent. Status o'tishlari atomik (`UPDATE … WHERE status IN`), qisman unique indeks va `idempotencyKey` ishlatiladi.
 - **Instansda qoladigan narsalar:** spam limiti va rate limit (taxminiy). Ularni aniq qilish uchun keyinchalik Redis store qo'shish mumkin.
 
+**Unumdorlik (yuklama testi, `npm run loadtest`).** Bitta instans, Telegram API kechikishi ~60 ms simulyatsiyada:
+parallellik 100 da ~1 100 update/s, 500 da ~4 000 update/s (p95 < 200 ms, xatosiz). Oddiy xabarga bazaga 1–2 ta indeksli
+o'qish ketadi. O'tkazuvchanlik asosan parallellikka bog'liq: webhook'da `WEBHOOK_MAX_CONNECTIONS` (standart 100 —
+Telegram maksimumi), polling'da `BOT_CONCURRENCY` (standart 100). Amalda chegara Telegram'ning o'zida: bot ~30 xabar/s
+dan ko'p yuborsa Telegram 429 qaytaradi (auto-retry kutadi).
+
 **Baza ulanishlari:** `DB_POOL_SIZE × instanslar soni < max_connections`. Ko'p instans uchun PgBouncer (transaction mode) tavsiya etiladi, bunda `DATABASE_URL` ga `?pgbouncer=true` qo'shiladi.
 
 **Probe'lar va metrikalar:**

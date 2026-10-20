@@ -49,11 +49,13 @@ describe("onlayn to'lov: yordamchi funksiyalar", () => {
     expect(checkPaymeAuth("Bearer x")).toBe(false);
   });
 
-  it("Payme: test rejimida PAYME_TEST_KEY, haqiqiy rejimda PAYME_KEY", () => {
+  it("Payme: test rejimida PAYME_TEST_KEY va PAYME_KEY, haqiqiy rejimda faqat PAYME_KEY", () => {
     cfg.PAYME_TEST_KEY = "sandbox-key";
     try {
+      // Sandbox TEST_KEY bilan, checkout.test.paycom.uz kassa kaliti bilan keladi
       expect(checkPaymeAuth(basic("sandbox-key"))).toBe(true);
-      expect(checkPaymeAuth(basic(TEST_PAYMENTS.PAYME_KEY))).toBe(false);
+      expect(checkPaymeAuth(basic(TEST_PAYMENTS.PAYME_KEY))).toBe(true);
+      expect(checkPaymeAuth(basic("boshqa-kalit"))).toBe(false);
       cfg.PAYME_TEST_MODE = false;
       expect(checkPaymeAuth(basic(TEST_PAYMENTS.PAYME_KEY))).toBe(true);
       expect(checkPaymeAuth(basic("sandbox-key"))).toBe(false);

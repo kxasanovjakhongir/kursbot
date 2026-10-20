@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { PaymentTransaction } from "@prisma/client";
 import { prisma } from "../../db";
-import { config, paymeKey } from "../../config";
+import { config, paymeKeys } from "../../config";
 import { logger } from "../../lib/logger";
 import { checkPayable, isUniqueViolation, markOrderPaidOnline, parseOrderId, TX_STATE, type PayableResult } from "./common";
 
@@ -66,12 +66,17 @@ const fail = (e: { code: number; message: Lang }, data?: string): never => {
   throw new PaymeFault({ code: e.code, message: e.message, ...(data ? { data } : {}) });
 };
 
-/** Authorization: Basic base64("Paycom:<kalit>"); kalit — PAYME_TEST_MODE ga qarab test yoki haqiqiy */
+const sameSecret = (got: Buffer, key: string): boolean => {
+  const want = Buffer.from(key);
+  return got.length === want.length && timingSafeEqual(got, want);
+};
+
+/** Authorization: Basic base64("Paycom:<kalit>"); qabul qilinadigan kalitlar — paymeKeys() (rejimga qarab) */
 export function checkPaymeAuth(header: string | undefined): boolean {
-  const key = paymeKey();
+  const keys = paymeKeys();
   // VAQTINCHA: Payme qaysi kalitni yuborayotganini ko'rish uchun. Kalitning o'zi yozilmaydi — faqat uzunligi va chetlari
-  if (!key || !header?.startsWith("Basic ")) {
-    logger.warn({ hasHeader: !!header, hasKey: !!key }, "PAYME AUTH: header yo'q yoki Basic emas");
+  if (keys.length === 0 || !header?.startsWith("Basic ")) {
+    logger.warn({ hasHeader: !!header, hasKey: keys.length > 0 }, "PAYME AUTH: header yo'q yoki Basic emas");
     return false;
   }
   const decoded = Buffer.from(header.slice(6).trim(), "base64").toString("utf8");
@@ -80,11 +85,11 @@ export function checkPaymeAuth(header: string | undefined): boolean {
   const login = decoded.slice(0, sep);
   const gotStr = decoded.slice(sep + 1);
   const got = Buffer.from(gotStr);
-  const want = Buffer.from(key);
-  const ok = got.length === want.length && timingSafeEqual(got, want);
+  // Har bir kalit bilan solishtiriladi (to'xtamasdan — vaqt bo'yicha qaysi kalit mos kelgani bilinmasin)
+  const ok = keys.map((k) => sameSecret(got, k)).some(Boolean);
   if (!ok) {
     logger.warn(
-      { login, len: gotStr.length, start: gotStr.slice(0, 4), end: gotStr.slice(-4), wantLen: key.length, testMode: config.PAYME_TEST_MODE },
+      { login, len: gotStr.length, start: gotStr.slice(0, 4), end: gotStr.slice(-4), wantLens: keys.map((k) => k.length), testMode: config.PAYME_TEST_MODE },
       "PAYME AUTH: kalit mos emas",
     );
   }

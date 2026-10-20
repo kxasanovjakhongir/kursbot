@@ -115,7 +115,7 @@ const schema = z.object({
   PAYME_MERCHANT_ID: optionalStr,
   // Kassa kaliti (haqiqiy). Payme so'rovlari "Basic Paycom:<kalit>" bilan tekshiriladi
   PAYME_KEY: optionalStr,
-  // Test kaliti (sandbox). PAYME_TEST_MODE=true da shu ishlatiladi; bo'sh bo'lsa — PAYME_KEY
+  // Test kaliti (sandbox). PAYME_TEST_MODE=true da PAYME_TEST_KEY ham, PAYME_KEY ham qabul qilinadi (paymeKeys)
   PAYME_TEST_KEY: optionalStr,
   // Kassadagi hisob maydoni nomi (kabinetda "order_id" deb sozlang)
   PAYME_ACCOUNT_FIELD: z
@@ -163,10 +163,17 @@ function load() {
 export const config = load();
 export type Config = typeof config;
 
+/**
+ * Payme so'rovlari qabul qilinadigan kalitlar. Haqiqiy rejimda — faqat PAYME_KEY (test kaliti bilan kelgan
+ * sandbox so'rovi haqiqiy buyurtmani tasdiqlab yubormasligi uchun). Test rejimida — PAYME_TEST_KEY va PAYME_KEY:
+ * sandbox TEST_KEY bilan, checkout.test.paycom.uz esa kassa kaliti bilan murojaat qiladi
+ */
+export const paymeKeys = (): string[] => {
+  const keys = config.PAYME_TEST_MODE ? [config.PAYME_TEST_KEY, config.PAYME_KEY] : [config.PAYME_KEY];
+  return [...new Set(keys.filter((k): k is string => !!k))];
+};
 /** Payme sozlangan (kassa ID va kalit bor) */
-/** Payme so'rovlarini tekshiradigan kalit: test rejimida test kaliti (bo'lmasa — asosiy kalit) */
-export const paymeKey = (): string | undefined => (config.PAYME_TEST_MODE ? (config.PAYME_TEST_KEY ?? config.PAYME_KEY) : config.PAYME_KEY);
-export const paymeEnabled = (): boolean => !!(config.PAYME_MERCHANT_ID && paymeKey());
+export const paymeEnabled = (): boolean => !!config.PAYME_MERCHANT_ID && paymeKeys().length > 0;
 /** Click sozlangan (service ID, merchant ID va secret key bor) */
 export const clickEnabled = (): boolean => !!(config.CLICK_SERVICE_ID && config.CLICK_MERCHANT_ID && config.CLICK_SECRET_KEY);
 /** Kamida bitta onlayn to'lov tizimi yoqilgan — bunda karta bo'lmasa ham buyurtma yaratiladi */

@@ -163,6 +163,29 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     expect(order.amount).toBe(150000);
   });
 
+  it("Payme protokoli: text/json qabul qilinadi, buzuq JSON -32700, POST emas -32300 — hammasi HTTP 200", async () => {
+    // Hujjatdagi so'rov namunasi: Content-Type: text/json; charset=UTF-8
+    const asText = await request(app)
+      .post("/api/payments/payme")
+      .set("Authorization", basic(TEST_PAYMENTS.PAYME_KEY))
+      .set("Content-Type", "text/json; charset=UTF-8")
+      .send(JSON.stringify({ id: 7, method: "CheckTransaction", params: { id: "nope" } }));
+    expect(asText.status).toBe(200);
+    expect(asText.body).toMatchObject({ id: 7, error: { code: -31003 } });
+
+    const broken = await request(app)
+      .post("/api/payments/payme")
+      .set("Authorization", basic(TEST_PAYMENTS.PAYME_KEY))
+      .set("Content-Type", "application/json")
+      .send("{ buzuq");
+    expect(broken.status).toBe(200);
+    expect(broken.body.error.code).toBe(-32700);
+
+    const get = await request(app).get("/api/payments/payme");
+    expect(get.status).toBe(200);
+    expect(get.body.error.code).toBe(-32300);
+  });
+
   it("Payme: noto'g'ri kalit -32504", async () => {
     const res = await payme("CheckPerformTransaction", { amount: 1, account: { order_id: "1" } }, "bad");
     expect(res.status).toBe(200);
@@ -184,8 +207,8 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     const txId = created.body.result.transaction;
     // Takroriy so'rov — o'sha tranzaksiya
     expect((await payme("CreateTransaction", { id: "pm-tx-1", time, amount, account })).body.result.transaction).toBe(txId);
-    // Boshqa tranzaksiya shu buyurtmaga — band
-    expect((await payme("CreateTransaction", { id: "pm-tx-2", time, amount, account })).body.error.code).toBe(-31053);
+    // Boshqa tranzaksiya shu buyurtmaga — Payme hujjati (sandbox «В ожидании оплаты»): -31008
+    expect((await payme("CreateTransaction", { id: "pm-tx-2", time, amount, account })).body.error.code).toBe(-31008);
     // Tekshiruv ham band deydi (sandbox: «Обрабатывается»)
     expect((await payme("CheckPerformTransaction", { amount, account })).body.error.code).toBe(-31053);
 

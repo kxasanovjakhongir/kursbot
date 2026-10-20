@@ -23,6 +23,7 @@ const msg = (uz: string, ru: string, en: string): Lang => ({ uz, ru, en });
 export const PAYME_ERRORS = {
   invalidAuth: { code: -32504, message: msg("Avtorizatsiya xatosi", "Недостаточно привилегий", "Insufficient privileges") },
   parse: { code: -32700, message: msg("JSON xato", "Ошибка парсинга JSON", "Parse error") },
+  notPost: { code: -32300, message: msg("So'rov POST emas", "Метод запроса не POST", "Request method is not POST") },
   invalidRequest: { code: -32600, message: msg("Noto'g'ri so'rov", "Неверный запрос", "Invalid request") },
   methodNotFound: { code: -32601, message: msg("Metod topilmadi", "Метод не найден", "Method not found") },
   system: { code: -32400, message: msg("Tizim xatosi", "Системная ошибка", "System error") },
@@ -203,10 +204,11 @@ async function createTransaction(params: Record<string, unknown>) {
   const order = payableOrFail(await checkPayable(orderId));
   if (amount !== order.amount * 100) fail(PAYME_ERRORS.invalidAmount);
 
-  // Shu buyurtma bo'yicha boshqa kutilayotgan tranzaksiya
+  // Shu buyurtma bo'yicha boshqa kutilayotgan tranzaksiya. Payme hujjati (sandbox, «В ожидании оплаты»):
+  // yangi tranzaksiyaga -31008 (CheckPerformTransaction esa -31050…-31099 oralig'ida -31053 qaytaradi)
   const pending = await prisma.paymentTransaction.findFirst({ where: { orderId: order.id, state: TX_STATE.pending } });
   if (pending) {
-    if (pending.provider === "payme" && !(await expireIfStale(pending))) fail(PAYME_ERRORS.orderBusy, config.PAYME_ACCOUNT_FIELD);
+    if (pending.provider === "payme" && !(await expireIfStale(pending))) fail(PAYME_ERRORS.cannotPerform);
     // Boshqa tizimdagi (Click) tugallanmagan urinish — mijoz Payme'ni tanladi, eskisi bekor qilinadi
     if (pending.provider !== "payme") {
       await prisma.paymentTransaction.updateMany({
@@ -226,7 +228,7 @@ async function createTransaction(params: Record<string, unknown>) {
     if (isUniqueViolation(err)) {
       const same = await prisma.paymentTransaction.findUnique({ where: { provider_externalId: { provider: "payme", externalId } } });
       if (same?.state === TX_STATE.pending) return { create_time: ms(same.createdAt), transaction: same.id.toString(), state: same.state };
-      fail(PAYME_ERRORS.orderBusy, config.PAYME_ACCOUNT_FIELD);
+      fail(PAYME_ERRORS.cannotPerform);
     }
     throw err;
   }
@@ -311,6 +313,11 @@ async function getStatement(params: Record<string, unknown>) {
       ...txView(tx),
     })),
   };
+}
+
+/** Protokol darajasidagi xato javobi (so'rov tanasi o'qilmagan holatlar uchun: JSON xato, POST emas) */
+export function paymeProtocolError(error: { code: number; message: Lang }, id: unknown = null): PaymeOutcome["body"] {
+  return { jsonrpc: "2.0", id, error: { code: error.code, message: error.message } };
 }
 
 /** Bitta Payme so'rovini qayta ishlaydi. Auth tekshiruvi ham shu yerda (Payme xato formatida javob kutadi) */

@@ -248,6 +248,20 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
     });
     // Takroriy bekor qilish — o'sha holat
     expect((await payme("CancelTransaction", { id: "pm-tx-1", reason: 5 })).body.result.state).toBe(-2);
+
+    // Panel uchun tarix: Create (2 marta), Perform (2), Cancel (2); begona kalit bilan kelgan so'rov yozilmaydi
+    await payme("PerformTransaction", { id: "pm-tx-1" }, "begona-kalit");
+    const events = ((await prisma.paymentTransaction.findFirstOrThrow({ where: { externalId: "pm-tx-1" } })).meta as { events: Record<string, unknown>[] }).events;
+    expect(events.map((e) => [e.method, e.result])).toEqual([
+      ["CreateTransaction", "ok"],
+      ["CreateTransaction", "ok"],
+      ["PerformTransaction", "ok"],
+      ["PerformTransaction", "ok"],
+      ["CancelTransaction", "ok"],
+      ["CancelTransaction", "ok"],
+    ]);
+    expect(events[0]).toMatchObject({ amount, payme_time: time, account });
+    expect(events[4]).toMatchObject({ reason: 5 });
     expect((await payme("CheckTransaction", { id: "nope" })).body.error.code).toBe(-31003);
     expect((await payme("ChangePassword", { password: "x" })).body.error.code).toBe(-32601);
   });
@@ -322,6 +336,18 @@ describe.skipIf(!enabled)("onlayn to'lov: Payme va Click endpointlari", () => {
       expect(again.body.error).toBe(-4);
       const prep2 = await request(app).post("/api/payments/click/prepare").type("form").send(signed({ ...base(order.id, "c2"), action: "0" }, 0));
       expect(prep2.body.error).toBe(-4);
+
+      // Panel uchun tarix: har bir so'rov va bizning javob; imzo saqlanmaydi
+      const tx = await prisma.paymentTransaction.findFirstOrThrow({ where: { provider: "click", externalId: "c1" } });
+      const meta = tx.meta as { click_paydoc_id: string; events: Record<string, unknown>[] };
+      expect(meta.click_paydoc_id).toBe("doc-c1");
+      expect(meta.events.map((e) => [e.method, e.result])).toEqual([
+        ["prepare", "ok"],
+        ["complete", "ok"],
+        ["complete", "-4"],
+      ]);
+      expect(meta.events[0]).toMatchObject({ amount: "150000", click_paydoc_id: "doc-c1", sign_time: expect.any(String) });
+      expect(JSON.stringify(meta)).not.toContain("sign_string");
     });
 
     it("Click to'lov o'tmaganini bildirsa (error < 0) — tranzaksiya bekor, buyurtma ochiq", async () => {

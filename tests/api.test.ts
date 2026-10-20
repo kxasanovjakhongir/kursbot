@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
+import ExcelJS from "exceljs";
 import type { Api } from "grammy";
 import type { Express } from "express";
 import { prisma } from "../src/db";
@@ -528,6 +529,62 @@ describe.skipIf(!enabled)("admin API", () => {
     expect(ids(await get("q=yo'q-narsa"))).toEqual([]);
     expect((await request(app).get("/api/orders/payments?state=7").set(auth)).status).toBe(400);
     expect((await request(app).get("/api/orders/payments")).status).toBe(401);
+
+    // Mijozning Telegram ID si bilan qidiruv, ro'yxatda Telegram ID va kurs kodi
+    expect(ids(await get("q=1001"))).toEqual(["pm-1", "ck-2", "ck-1"]);
+    expect(all.items[0].order.user.telegramId).toBe("1001");
+    expect(all.items[0].order.product).toMatchObject({ code: "onlayn", title: "Onlayn kurs" });
+
+    // Sana filtri: boshlangan vaqt bo'yicha [from, to)
+    const ck1 = await prisma.paymentTransaction.findFirstOrThrow({ where: { externalId: "ck-1" } });
+    await prisma.paymentTransaction.update({ where: { id: ck1.id }, data: { createdAt: new Date("2026-01-10T10:00:00Z") } });
+    expect(ids(await get("from=2026-01-10T00:00:00Z&to=2026-01-11T00:00:00Z"))).toEqual(["ck-1"]);
+    const recent = await get(`from=${encodeURIComponent(new Date(Date.now() - 3600_000).toISOString())}`);
+    expect(ids(recent)).toEqual(["pm-1", "ck-2"]);
+    expect(recent.summary["-1"].count).toBe(0);
+    expect((await request(app).get("/api/orders/payments?from=kecha").set(auth)).status).toBe(400);
+
+    // Tafsilot: tranzaksiya, tarix, buyurtma, mijoz va shu buyurtmadagi barcha urinishlar
+    const ck2 = await prisma.paymentTransaction.findFirstOrThrow({ where: { externalId: "ck-2" } });
+    const detail = await request(app).get(`/api/orders/payments/${ck2.id}`).set(auth);
+    expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({
+      id: String(ck2.id),
+      provider: "click",
+      state: 2,
+      meta: { click_paydoc_id: "doc-2" },
+      order: { id: String(order.id), amount: 7000, paymentMethod: "click", user: { telegramId: "1001", firstName: "Ali" }, product: { code: "onlayn", price: 7000 } },
+    });
+    expect(detail.body.order.transactions.map((t: { externalId: string }) => t.externalId)).toEqual(["ck-1", "ck-2", "pm-1"]);
+    expect((await request(app).get("/api/orders/payments/999999999").set(auth)).status).toBe(404);
+    expect((await request(app).get("/api/orders/payments/abc").set(auth)).status).toBe(400);
+
+    // Excel: joriy filtr bo'yicha (holat ham), barcha ustunlar
+    const xlsx = await request(app)
+      .get("/api/orders/payments/export?provider=click")
+      .set(auth)
+      .buffer(true)
+      .parse((res, cb) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (c: Buffer) => chunks.push(c));
+        res.on("end", () => cb(null, Buffer.concat(chunks)));
+      });
+    expect(xlsx.status).toBe(200);
+    expect(xlsx.headers["content-type"]).toContain("spreadsheetml.sheet");
+    expect(xlsx.headers["content-disposition"]).toMatch(/attachment; filename="payments-\d{4}-\d{2}-\d{2}-\d{4}\.xlsx"/);
+    expect(xlsx.headers["x-export-total"]).toBe("2");
+    const wb = new ExcelJS.Workbook();
+    const buf = xlsx.body as Buffer;
+    await wb.xlsx.load(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+    const sheet = wb.worksheets[0];
+    expect(sheet.rowCount).toBe(3);
+    const header = (sheet.getRow(1).values as unknown[]).slice(1);
+    expect(header).toContain("Telegram ID");
+    expect(header).toContain("Click to'lov hujjati");
+    const firstRow = (sheet.getRow(2).values as unknown[]).slice(1);
+    expect(firstRow).toEqual(expect.arrayContaining(["Click", "ck-2", "doc-2", "To'langan", 7000, "Onlayn kurs", "1001"]));
+    expect((await request(app).get("/api/orders/payments/export?state=2").set(auth)).headers["x-export-total"]).toBe("1");
+    expect(await prisma.activityLog.count({ where: { action: "EXPORT_PAYMENTS" } })).toBeGreaterThan(0);
   });
 
   it("cheklar tarixi: tasdiqlangan va rad etilganlar, filtr va qidiruv; buyurtmani bekor qilish", async () => {

@@ -45,7 +45,18 @@ export default function OrderDetailPage() {
                     ["To'lov usuli", PAYMENT_METHOD_LABEL[o.paymentMethod] ?? o.paymentMethod],
                     ["Karta", o.card ? `${o.card.numberMasked} (${o.card.holder})` : "—"],
                     ...(o.transactions?.length
-                      ? [["Onlayn to'lov", o.transactions.map((t) => `${PAYMENT_METHOD_LABEL[t.provider]} #${t.externalId}: ${TX_STATE_LABEL[t.state] ?? t.state}`).join("; ")]]
+                      ? [
+                          [
+                            "Onlayn to'lov",
+                            <span key="tx" className="flex flex-col items-end gap-0.5">
+                              {o.transactions.map((t) => (
+                                <Link key={t.id} to={`/payments/${t.id}`} className="text-blue-600 hover:underline">
+                                  {PAYMENT_METHOD_LABEL[t.provider]} #{t.externalId}: {TX_STATE_LABEL[t.state] ?? t.state}
+                                </Link>
+                              ))}
+                            </span>,
+                          ],
+                        ]
                       : []),
                     ["Manba", o.source ?? "—"],
                     ["Urinishlar", o.attempts],

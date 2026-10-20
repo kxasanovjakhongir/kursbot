@@ -1,16 +1,19 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import type { OrderStatus, PaymentMethod, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../db";
 import { approveAndNotify, cancelAndNotify, rejectAndNotify } from "../../bot/admin/reviewActions";
 import { logActivity } from "../../services/activity";
 import { parseRejectInput, rejectReasonList, rejectSchema } from "../rejectInput";
-import { currentUser } from "../auth";
+import { assertPermission, currentUser } from "../auth";
 import { HttpError } from "../errors";
 import { sendTelegramFile } from "../telegramFile";
 import type { BotRuntime } from "../runtime";
 import { clientIp, paged, pagination, parseBigId, parseBody, parseQuery } from "../validate";
 import { escapeLike } from "../../lib/format";
+import { logger } from "../../lib/logger";
+import { countPayments, PAYMENTS_EXPORT_LIMIT, paymentsFileName, writePaymentsXlsx } from "../../services/export/payments";
 
 const METHODS = ["card", "payme", "click"] as const satisfies readonly PaymentMethod[];
 const STATUSES = ["new", "receipt_sent", "rejected", "approved", "joined", "expired", "cancelled", "refunded"] as const satisfies readonly OrderStatus[];
@@ -18,15 +21,76 @@ const STATUSES = ["new", "receipt_sent", "rejected", "approved", "joined", "expi
 const cancelSchema = z.object({ reason: z.string().trim().max(500).optional() });
 
 const TX_STATES = ["1", "2", "-1", "-2"] as const;
-const paymentsQuery = pagination.extend({
+const paymentsFilter = z.object({
   provider: z.enum(["payme", "click"]).optional(),
   state: z.enum(TX_STATES).optional(),
   q: z.string().trim().max(100).optional(),
+  // To'lov boshlangan vaqt: from <= createdAt < to
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
+const paymentsQuery = pagination.merge(paymentsFilter);
+
+/** Ro'yxat, jami va eksport uchun bir xil shart (state alohida — kartochkalar barcha holatlarni ko'rsatadi) */
+function paymentsWhere({ provider, q, from, to }: z.infer<typeof paymentsFilter>): Prisma.PaymentTransactionWhereInput {
+  const base: Prisma.PaymentTransactionWhereInput = {
+    ...(provider && { provider }),
+    ...((from || to) && { createdAt: { ...(from && { gte: from }), ...(to && { lt: to }) } }),
+  };
+  if (q) {
+    const term = q.replace(/^#/, "");
+    const like = { contains: escapeLike(term), mode: "insensitive" as const };
+    const digits = term.replace(/\D/g, "");
+    base.OR = [
+      ...(/^\d{1,18}$/.test(term) ? [{ orderId: BigInt(term) }, { order: { user: { telegramId: BigInt(term) } } }] : []),
+      { externalId: term },
+      { order: { user: { OR: [{ firstName: like }, { lastName: like }, { username: like }, ...(digits ? [{ phone: { contains: digits } }] : [])] } } },
+      { order: { product: { title: like } } },
+    ];
+  }
+  return base;
+}
+
+/** Ro'yxat qatori: tranzaksiya, buyurtma, mijoz va kurs */
+const paymentListSelect = {
+  id: true,
+  provider: true,
+  externalId: true,
+  state: true,
+  reason: true,
+  amount: true,
+  providerTime: true,
+  meta: true,
+  createdAt: true,
+  performedAt: true,
+  cancelledAt: true,
+  updatedAt: true,
+  order: {
+    select: {
+      id: true,
+      status: true,
+      amount: true,
+      paymentMethod: true,
+      createdAt: true,
+      paidAt: true,
+      user: { select: { id: true, telegramId: true, firstName: true, lastName: true, username: true, phone: true } },
+      product: { select: { id: true, code: true, title: true } },
+    },
+  },
+} satisfies Prisma.PaymentTransactionSelect;
 
 const historyQuery = pagination.extend({
   result: z.enum(["all", "approved", "rejected", "cancelled"]).default("all"),
   q: z.string().trim().max(100).optional(),
+});
+
+/** Export og'ir amal — daqiqasiga 10 ta (foydalanuvchilar eksporti bilan bir xil) */
+const paymentsExportLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Juda ko'p eksport so'rovi. Birozdan keyin qayta urinib ko'ring.", details: { code: "rate_limited" } },
 });
 
 /** Savdo buyurtmalari va cheklarni tasdiqlash (Telegram admin guruhi bilan bir xil mantiq) */
@@ -126,47 +190,11 @@ export function ordersRouter(rt: BotRuntime): Router {
    * summary — tanlangan tizim va qidiruv bo'yicha holatlar kesimida soni va summasi (holat filtrisiz).
    */
   r.get("/payments", async (req, res) => {
-    const { provider, state, q, page, pageSize } = parseQuery(paymentsQuery, req);
-    const base: Prisma.PaymentTransactionWhereInput = provider ? { provider } : {};
-    if (q) {
-      const term = q.replace(/^#/, "");
-      const like = { contains: escapeLike(term), mode: "insensitive" as const };
-      base.OR = [
-        ...(/^\d{1,18}$/.test(term) ? [{ orderId: BigInt(term) }] : []),
-        { externalId: term },
-        { order: { user: { OR: [{ firstName: like }, { lastName: like }, { username: like }, { phone: { contains: escapeLike(term.replace(/\D/g, "") || term) } }] } } },
-        { order: { product: { title: like } } },
-      ];
-    }
+    const { state, page, pageSize, ...filter } = parseQuery(paymentsQuery, req);
+    const base = paymentsWhere(filter);
     const where: Prisma.PaymentTransactionWhereInput = state ? { ...base, state: Number(state) } : base;
     const [items, total, groups] = await Promise.all([
-      prisma.paymentTransaction.findMany({
-        where,
-        orderBy: { id: "desc" },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-        select: {
-          id: true,
-          provider: true,
-          externalId: true,
-          state: true,
-          reason: true,
-          amount: true,
-          meta: true,
-          createdAt: true,
-          performedAt: true,
-          cancelledAt: true,
-          order: {
-            select: {
-              id: true,
-              status: true,
-              paymentMethod: true,
-              user: { select: { id: true, firstName: true, lastName: true, username: true, phone: true } },
-              product: { select: { title: true } },
-            },
-          },
-        },
-      }),
+      prisma.paymentTransaction.findMany({ where, orderBy: { id: "desc" }, skip: (page - 1) * pageSize, take: pageSize, select: paymentListSelect }),
       prisma.paymentTransaction.count({ where }),
       prisma.paymentTransaction.groupBy({ by: ["state"], where: base, _count: { _all: true }, _sum: { amount: true } }),
     ]);
@@ -177,6 +205,75 @@ export function ordersRouter(rt: BotRuntime): Router {
       }),
     );
     res.json({ ...paged(items, total, page, pageSize), summary });
+  });
+
+  /** Excel: ro'yxatdagi filtr bo'yicha (holat filtri ham) — barcha ustunlar */
+  r.get("/payments/export", paymentsExportLimiter, async (req, res) => {
+    assertPermission(req, "users.export");
+    const { state, ...filter } = parseQuery(paymentsFilter, req);
+    const base = paymentsWhere(filter);
+    const where: Prisma.PaymentTransactionWhereInput = state ? { ...base, state: Number(state) } : base;
+    const total = await countPayments(where);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="${paymentsFileName()}"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Export-Total", String(Math.min(total, PAYMENTS_EXPORT_LIMIT)));
+    try {
+      await writePaymentsXlsx(where, res);
+    } catch (err) {
+      // Fayl yarmida uzildi: JSON yuborib bo'lmaydi — ulanish yopiladi
+      logger.error({ err, total }, "to'lovlar eksportida xatolik");
+      res.destroy(err instanceof Error ? err : undefined);
+      return;
+    }
+    await logActivity(currentUser(req).id, "EXPORT_PAYMENTS", `Onlayn to'lovlar Excel'ga yuklandi (${Math.min(total, PAYMENTS_EXPORT_LIMIT)} ta)`, clientIp(req));
+  });
+
+  /** Bitta tranzaksiyaning barcha ma'lumotlari: tizim so'rovlari tarixi, buyurtma, mijoz, shu buyurtmadagi boshqa urinishlar */
+  r.get("/payments/:id", async (req, res) => {
+    const id = parseBigId(req.params.id);
+    const tx = await prisma.paymentTransaction.findUnique({
+      where: { id },
+      include: {
+        order: {
+          select: {
+            id: true,
+            status: true,
+            amount: true,
+            discount: true,
+            source: true,
+            paymentMethod: true,
+            attempts: true,
+            createdAt: true,
+            expiresAt: true,
+            paidAt: true,
+            reviewedAt: true,
+            cancelledAt: true,
+            cancelReason: true,
+            user: {
+              select: {
+                id: true,
+                telegramId: true,
+                firstName: true,
+                lastName: true,
+                username: true,
+                phone: true,
+                language: true,
+                isBlocked: true,
+                createdAt: true,
+              },
+            },
+            product: { select: { id: true, code: true, title: true, price: true } },
+            transactions: {
+              orderBy: { id: "asc" },
+              select: { id: true, provider: true, externalId: true, state: true, reason: true, amount: true, createdAt: true, performedAt: true, cancelledAt: true },
+            },
+          },
+        },
+      },
+    });
+    if (!tx) throw new HttpError(404, "To'lov topilmadi");
+    res.json(tx);
   });
 
   r.get("/", async (req, res) => {

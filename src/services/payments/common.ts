@@ -75,6 +75,44 @@ export function returnUrl(botUsername: string | undefined): string | undefined {
   return botUsername ? `https://t.me/${botUsername}` : undefined;
 }
 
+/**
+ * To'lov tizimidan kelgan so'rov — panelda tranzaksiya tarixi sifatida ko'rinadi (meta.events).
+ * Maxfiy qiymatlar (imzo, kalit) yozilmaydi.
+ */
+export interface TxEvent {
+  /** Payme metodi (CreateTransaction…) yoki Click bosqichi (prepare / complete) */
+  method: string;
+  /** Biz qaytargan natija: ok yoki xato kodi */
+  result: string;
+  at: string;
+  [key: string]: string | number | boolean | null | Record<string, string> | undefined;
+}
+
+export const txEvent = (method: string, result: string, extra: Omit<TxEvent, "method" | "result" | "at"> = {}): TxEvent => ({
+  method,
+  result,
+  at: new Date().toISOString(),
+  ...extra,
+});
+
+/** meta.events ga atomik qo'shadi (parallel so'rovlar bir-birini o'chirmaydi); tarix 50 ta bilan cheklangan */
+export async function appendTxEvent(db: Prisma.TransactionClient, txId: bigint, event: TxEvent): Promise<void> {
+  await db.$executeRaw`
+    UPDATE payment_transactions
+    SET meta = jsonb_set(
+      COALESCE(meta, '{}'::jsonb),
+      '{events}',
+      (SELECT COALESCE(jsonb_agg(t.e ORDER BY t.i), '[]'::jsonb) FROM (
+        SELECT x.e, x.i
+        FROM jsonb_array_elements(COALESCE(meta->'events', '[]'::jsonb) || jsonb_build_array(${JSON.stringify(event)}::jsonb)) WITH ORDINALITY AS x(e, i)
+        ORDER BY x.i
+        OFFSET GREATEST(jsonb_array_length(COALESCE(meta->'events', '[]'::jsonb)) + 1 - 50, 0)
+      ) t)
+    ),
+    updated_at = now()
+    WHERE id = ${txId}`;
+}
+
 /** Unique indekslar (bitta kutilayotgan / bitta to'langan tranzaksiya) poygada ishlaganda */
 export function isUniqueViolation(err: unknown): boolean {
   return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";

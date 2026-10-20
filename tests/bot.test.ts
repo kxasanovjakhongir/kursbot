@@ -6,7 +6,7 @@ import { config } from "../src/config";
 import { createBot } from "../src/bot/bot";
 import { installEmptyTextGuard } from "../src/bot/emptyText";
 import type { BotContext } from "../src/bot/context";
-import { setButtons } from "../src/services/buttons";
+import { resetButtons, setButtonColors, setButtons } from "../src/services/buttons";
 import { addCard } from "../src/services/cards";
 import { invalidateSettings, setSetting } from "../src/services/settings";
 import { installSupportButtonTracker, syncSupportButtons } from "../src/services/supportButtons";
@@ -271,6 +271,18 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
       expect(urls.some((u) => u.startsWith("https://my.click.uz/services/pay/?"))).toBe(true);
       // O'z domenimiz orqali yo'naltirish ilovani ochmaydi
       expect(urls.some((u) => u.includes("/pay/payme/") || u.includes("/pay/click/"))).toBe(false);
+
+      // Paneldan tanlangan ranglar: Payme qizil, Click rangsiz, karta nusxalash ko'k, «Darslikni olaman» yashil
+      await setButtonColors({ "payment.pay_payme": "danger", "payment.pay_click": null, "payment.copy_card": "primary", "product.buy": "success" });
+      calls = [];
+      await send(callback(`pay:${order.id}`));
+      expect(styleOf("https://checkout.paycom.uz/")).toBe("danger");
+      expect(styleOf("https://my.click.uz/")).toBeUndefined();
+      expect(buttons(lastScreen()).find((b) => b.copy_text)?.style).toBe("primary");
+      calls = [];
+      await send(callback("p:4b"));
+      expect(buttons(lastScreen()).find((b) => b.callback_data === "buy:4b")?.style).toBe("success");
+      await resetButtons();
     } finally {
       Object.assign(cfg, saved);
     }

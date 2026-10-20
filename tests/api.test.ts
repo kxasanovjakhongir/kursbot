@@ -166,6 +166,47 @@ describe.skipIf(!enabled)("admin API", () => {
     expect(enabled(reset.body.screens, "product.buy")).toBe(true);
   });
 
+  it("bot tugmalari: rang — standart, o'zgartirish, rangsiz, validatsiya, faoliyat logi, standartga qaytarish", async () => {
+    const auth = { Authorization: `Bearer ${superToken}` };
+    type Btn = { id: string; colorable: boolean; color: string | null; defaultColor: string | null };
+    const btn = (screens: { buttons: Btn[] }[], id: string) => screens.flatMap((s) => s.buttons).find((b) => b.id === id)!;
+
+    const list = (await request(app).get("/api/bot/buttons").set(auth)).body.screens;
+    expect(btn(list, "payment.pay_payme")).toMatchObject({ colorable: true, color: "success", defaultColor: "success" });
+    expect(btn(list, "payment.pay_click")).toMatchObject({ colorable: true, color: "primary" });
+    expect(btn(list, "payment.copy_card")).toMatchObject({ colorable: true, color: null });
+    expect(btn(list, "product.buy")).toMatchObject({ colorable: true, color: null });
+    expect(btn(list, "home.help")).toMatchObject({ colorable: false, color: null });
+
+    const put = (body: object, token = superToken) => request(app).put("/api/bot/buttons").set("Authorization", `Bearer ${token}`).send(body);
+    expect((await put({ colors: { "payment.pay_payme": "danger" } }, adminToken)).status).toBe(403);
+    const changed = await put({ colors: { "payment.pay_payme": "danger", "payment.pay_click": null, "product.buy": "success" } });
+    expect(changed.status).toBe(200);
+    expect(btn(changed.body.screens, "payment.pay_payme").color).toBe("danger");
+    expect(btn(changed.body.screens, "payment.pay_click").color).toBeNull();
+    expect(btn(changed.body.screens, "product.buy").color).toBe("success");
+    // Rang yoqish/o'chirishdan alohida: faqat values yuborilsa ranglar o'zgarmaydi
+    const toggled = await put({ values: { "payment.pay_payme": false } });
+    expect(btn(toggled.body.screens, "payment.pay_payme").color).toBe("danger");
+    const log = await prisma.activityLog.findFirstOrThrow({ where: { action: "UPDATE_BOT_BUTTONS", description: { contains: "rang" } }, orderBy: { id: "desc" } });
+    expect(log.description).toContain("payment.pay_payme: rang qizil");
+    expect(log.description).toContain("payment.pay_click: rang rangsiz");
+
+    // Validatsiya: rangi tanlanmaydigan tugma, noma'lum rang, noma'lum maydon
+    expect((await put({ colors: { "home.help": "primary" } })).status).toBe(400);
+    expect((await put({ colors: { "payment.pay_payme": "yellow" } })).status).toBe(400);
+    expect((await put({ colors: { "no.such": "primary" } })).status).toBe(400);
+    expect((await put({ colours: {} })).status).toBe(400);
+
+    // Standartga qaytarish ranglarni ham tiklaydi; standartga teng rang bazada saqlanmaydi
+    const reset = (await request(app).post("/api/bot/buttons/reset").set(auth)).body.screens;
+    expect(btn(reset, "payment.pay_payme").color).toBe("success");
+    expect(btn(reset, "payment.pay_click").color).toBe("primary");
+    expect(btn(reset, "product.buy").color).toBeNull();
+    await put({ colors: { "payment.pay_payme": "success" } });
+    expect((await prisma.setting.findUnique({ where: { key: "button_colors" } }))?.value ?? {}).toEqual({});
+  });
+
   it("bot matnlari va kurs nomi limiti: faqat super admin, validatsiya, standartga qaytarish", async () => {
     const auth = { Authorization: `Bearer ${superToken}` };
     expect((await request(app).get("/api/bot/texts")).status).toBe(401);

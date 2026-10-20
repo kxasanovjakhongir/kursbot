@@ -3,7 +3,7 @@ import type { Product } from "@prisma/client";
 import { label, type Lang } from "../i18n";
 import { can, type Role } from "../services/permissions";
 import type { InlineKeyboardButton } from "grammy/types";
-import { buttonSwitch, COMMON_BUTTONS, type CommonButton, type ScreenId } from "../services/buttons";
+import { buttonSwitch, COMMON_BUTTONS, type ButtonColor, type CommonButton, type ScreenId } from "../services/buttons";
 import { getSupportUrl } from "../services/settings";
 import { CB } from "./ui/callbacks";
 
@@ -86,4 +86,9 @@ export function withPagination(kb: InlineKeyboard, page: number, pages: number, 
 
 export function reviewKeyboard(orderId: bigint): InlineKeyboard {
   return new InlineKeyboard().text("✅ Tasdiqlash", `adm:ap:${orderId}`).text("❌ Rad etish", `adm:rj:${orderId}`);
+}
+
+/** Oxirgi qo'shilgan tugmaga rang (paneldan tanlangan, services/buttons.ts); rangsiz bo'lsa — o'zgarishsiz */
+export function withColor(kb: InlineKeyboard, color: ButtonColor | undefined): InlineKeyboard {
+  return color ? kb.style(color) : kb;
 }

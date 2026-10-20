@@ -1,11 +1,11 @@
 import { InlineKeyboard } from "grammy";
 import type { Order, Product } from "@prisma/client";
 import type { BotContext } from "../context";
-import { withPagination, withScreenButtons } from "../keyboards";
+import { withColor, withPagination, withScreenButtons } from "../keyboards";
 import { escapeHtml, formatDate, formatDateTime, formatMoney, formatSum, groupCard } from "../../lib/format";
 import { prisma } from "../../db";
 import { joinParts } from "../../i18n";
-import { buttonSwitch } from "../../services/buttons";
+import { buttonColors, buttonSwitch, type ButtonColor } from "../../services/buttons";
 import { listActiveProducts, ownedInactiveProducts, ownedProductIds } from "../../services/products";
 import { lessonCounts } from "../../services/lessons";
 import { courseNameFormatter, displayCourseName } from "../../services/settings";
@@ -74,7 +74,7 @@ export async function productScreen(ctx: BotContext, product: Product): Promise<
   // Kurs darslari (videolar) — xarid qilmaganlarga nomlari 🔒 bilan ko'rinadi
   const lessons = (await lessonCounts([product.id])).get(product.id) ?? 0;
   if (on("lessons") && lessons > 0) kb.text(ctx.label("btn_lessons", { soni: lessons }), CB.lessons(product.code)).row();
-  if (on("buy")) kb.text(ctx.label("btn_buy"), CB.buy(product.code));
+  if (on("buy")) withColor(kb.text(ctx.label("btn_buy"), CB.buy(product.code)), (await buttonColors("product"))("buy"));
   // Kurs kartochkasida "⬅️ Orqaga" yo'q — faqat "🏠 Bosh menyu" (katalogga pastki «📚 Darsliklar» orqali)
   return { text, keyboard: await withScreenButtons(kb, ctx.lang, "product") };
 }
@@ -108,7 +108,7 @@ export async function courseSectionScreen(ctx: BotContext, product: Product, sec
       break;
   }
   const kb = new InlineKeyboard();
-  if ((await buttonSwitch("course_section"))("buy")) kb.text(ctx.label("btn_buy"), CB.buy(product.code));
+  if ((await buttonSwitch("course_section"))("buy")) withColor(kb.text(ctx.label("btn_buy"), CB.buy(product.code)), (await buttonColors("course_section"))("buy"));
   return { text, keyboard: await withScreenButtons(kb, ctx.lang, "course_section", CB.product(product.code)) };
 }
 
@@ -133,26 +133,26 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
     karta: card ? groupCard(card.number) : "—",
     karta_egasi: card ? `${card.holder}${card.bank ? ` (${card.bank})` : ""}` : "—",
   };
-  const on = await buttonSwitch("payment");
+  const [on, color] = await Promise.all([buttonSwitch("payment"), buttonColors("payment")]);
   const back = returnUrl(ctx.me?.username);
   // Havolalar to'g'ridan-to'g'ri to'lov tizimiga: telefon ularni Payme / Click ilovasida ochadi (checkout.paycom.uz va
   // my.click.uz ilovalarga bog'langan — universal / app links). O'z domenimiz orqali yo'naltirilsa (qisqa havola)
   // ilova ochilmay, brauzer sahifasi qolardi. Ilova o'rnatilmagan bo'lsa — o'sha sahifa brauzerda ochiladi.
-  // Tugma ranglari (Telegram tugma uslubi) — tizim brendiga yaqin: Payme yashil (firuza), Click ko'k
+  // Tugma ranglari paneldan («Bot tugmalari»); standart — tizim brendiga yaqin: Payme yashil (firuza), Click ko'k
   const online = [
     paymeEnabled() &&
       on("pay_payme") && {
         label: ctx.label("btn_pay_payme"),
         url: paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }),
-        style: "success" as const,
+        style: color("pay_payme"),
       },
     clickEnabled() &&
       on("pay_click") && {
         label: ctx.label("btn_pay_click"),
         url: clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
-        style: "primary" as const,
+        style: color("pay_click"),
       },
-  ].filter((b): b is { label: string; url: string; style: "success" | "primary" } => !!b);
+  ].filter((b): b is { label: string; url: string; style: ButtonColor | undefined } => !!b);
 
   // Sarlavha (karta ma'lumoti) + paneldan tahrirlanadigan ko'rsatmalar; muddat — buyurtmaning o'zidan
   // Paneldan o'chirilgan yoki bo'sh qoldirilgan qismlar tushib qoladi.
@@ -174,13 +174,9 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   }
   const kb = new InlineKeyboard();
   // Payme / Click: to'lov sahifasi (buyurtma raqami va summa havolaning ichida)
-  for (const b of online) {
-    kb.url(b.label, b.url);
-    if (b.style) kb.style(b.style);
-    kb.row();
-  }
+  for (const b of online) withColor(kb.url(b.label, b.url), b.style).row();
   // Bir bosishda karta raqami nusxalanadi — bank ilovasiga o'tishda qulay
-  if (card && on("copy_card")) kb.copyText(ctx.label("btn_copy_card"), card.number);
+  if (card && on("copy_card")) withColor(kb.copyText(ctx.label("btn_copy_card"), card.number), color("copy_card"));
   return { text, keyboard: await withScreenButtons(kb, ctx.lang, "payment", CB.product(order.product.code)) };
 }
 

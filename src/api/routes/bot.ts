@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "../../db";
 import { logActivity } from "../../services/activity";
 import { saveBotToken } from "../../services/botToken";
-import { isButtonId, listButtons, resetButtons, setButtons } from "../../services/buttons";
+import { BUTTON_COLORS, isButtonId, isColorableButton, listButtons, resetButtons, setButtonColors, setButtons } from "../../services/buttons";
 import { COURSE_NAME_MAX_LENGTH_LIMIT, getSettings, setSetting } from "../../services/settings";
 import { editableTextError, getEditableTexts, isEditableText, saveEditableTexts, setTextsEnabled } from "../../services/texts";
 import { LANGS } from "../../i18n";
@@ -172,22 +172,36 @@ export function botRouter(rt: BotRuntime): Router {
     res.json(await getEditableTexts(body.lang));
   });
 
-  // ---------- Bot tugmalari: xabar ostidagi yordamchi tugmalarni yoqish/o'chirish ----------
+  // ---------- Bot tugmalari: xabar ostidagi tugmalarni yoqish/o'chirish va rangi ----------
   r.get("/buttons", requirePermission("settings.manage"), async (_req, res) => {
     res.json({ screens: await listButtons() });
   });
 
-  const buttonsSchema = z.object({
-    values: z.record(z.boolean()).superRefine((v, zctx) => {
-      for (const id of Object.keys(v)) {
-        if (!isButtonId(id)) zctx.addIssue({ code: "custom", path: [id], message: "Bunday tugma yo'q." });
-      }
-    }),
-  });
+  const buttonsSchema = z
+    .object({
+      values: z
+        .record(z.boolean())
+        .superRefine((v, zctx) => {
+          for (const id of Object.keys(v)) {
+            if (!isButtonId(id)) zctx.addIssue({ code: "custom", path: [id], message: "Bunday tugma yo'q." });
+          }
+        })
+        .default({}),
+      // Rang: ko'k (primary), yashil (success), qizil (danger) yoki null — rangsiz
+      colors: z
+        .record(z.enum(BUTTON_COLORS).nullable())
+        .superRefine((v, zctx) => {
+          for (const id of Object.keys(v)) {
+            if (!isColorableButton(id)) zctx.addIssue({ code: "custom", path: [id], message: "Bu tugmaning rangini o'zgartirib bo'lmaydi." });
+          }
+        })
+        .default({}),
+    })
+    .strict();
 
   r.put("/buttons", requirePermission("settings.manage"), async (req, res) => {
-    const { values } = parseBody(buttonsSchema, req);
-    const changed = await setButtons(values);
+    const { values, colors } = parseBody(buttonsSchema, req);
+    const changed = [...(await setButtons(values)), ...(await setButtonColors(colors))];
     await logActivity(currentUser(req).id, "UPDATE_BOT_BUTTONS", `Bot tugmalari: ${changed.join(", ") || "o'zgarish yo'q"}`, clientIp(req));
     res.json({ screens: await listButtons() });
   });

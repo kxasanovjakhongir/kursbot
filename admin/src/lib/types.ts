@@ -195,11 +195,24 @@ export interface BotSettings {
 }
 
 /** Paneldan yoqib-o'chiriladigan bot tugmalari, ekranlar bo'yicha */
+/** Telegram tugma rangi; null — rangsiz (oddiy tugma) */
+export type BotButtonColor = "primary" | "success" | "danger" | null;
+
 export interface BotButtonScreen {
   id: string;
   title: string;
-  /** common — istalgan ekranga qo'shiladigan umumiy tugma; default — standart holati */
-  buttons: { id: string; label: string; hint: string | null; common: boolean; enabled: boolean; default: boolean }[];
+  /** common — istalgan ekranga qo'shiladigan umumiy tugma; default — standart holati; colorable — rangi tanlanadi */
+  buttons: {
+    id: string;
+    label: string;
+    hint: string | null;
+    common: boolean;
+    enabled: boolean;
+    default: boolean;
+    colorable: boolean;
+    color: BotButtonColor;
+    defaultColor: BotButtonColor;
+  }[];
 }
 
 export type BotTextFormat = "html" | "popup" | "part";

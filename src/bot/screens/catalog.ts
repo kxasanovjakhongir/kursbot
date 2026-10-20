@@ -138,12 +138,13 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
   // Havolalar to'g'ridan-to'g'ri to'lov tizimiga: telefon ularni Payme / Click ilovasida ochadi (checkout.paycom.uz va
   // my.click.uz ilovalarga bog'langan — universal / app links). O'z domenimiz orqali yo'naltirilsa (qisqa havola)
   // ilova ochilmay, brauzer sahifasi qolardi. Ilova o'rnatilmagan bo'lsa — o'sha sahifa brauzerda ochiladi.
-  // Click tugmasi ko'k (Click rangi) — Telegram tugma uslubi
+  // Tugma ranglari (Telegram tugma uslubi) — tizim brendiga yaqin: Payme yashil (firuza), Click ko'k
   const online = [
     paymeEnabled() &&
       on("pay_payme") && {
         label: ctx.label("btn_pay_payme"),
         url: paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang: ctx.lang }),
+        style: "success" as const,
       },
     clickEnabled() &&
       on("pay_click") && {
@@ -151,7 +152,7 @@ export async function paymentScreen(ctx: BotContext, order: OrderWithProduct): P
         url: clickCheckoutUrl(order.id, order.amount, { returnUrl: back }),
         style: "primary" as const,
       },
-  ].filter((b): b is { label: string; url: string; style?: "primary" } => !!b);
+  ].filter((b): b is { label: string; url: string; style: "success" | "primary" } => !!b);
 
   // Sarlavha (karta ma'lumoti) + paneldan tahrirlanadigan ko'rsatmalar; muddat — buyurtmaning o'zidan
   // Paneldan o'chirilgan yoki bo'sh qoldirilgan qismlar tushib qoladi.

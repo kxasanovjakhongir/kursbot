@@ -145,6 +145,7 @@ interface Button {
   text: string;
   callback_data?: string;
   url?: string;
+  style?: string;
   copy_text?: { text: string };
   web_app?: { url: string };
 }
@@ -260,6 +261,10 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
       await send(callback("buy:4b"));
       const order = await prisma.order.findFirstOrThrow();
       const urls = buttons(lastScreen()).flatMap((b) => (b.url ? [b.url] : []));
+      // Ranglar: Payme yashil, Click ko'k
+      const styleOf = (prefix: string) => buttons(lastScreen()).find((b) => b.url?.startsWith(prefix))?.style;
+      expect(styleOf("https://checkout.paycom.uz/")).toBe("success");
+      expect(styleOf("https://my.click.uz/")).toBe("primary");
       const payme = urls.find((u) => u.startsWith("https://checkout.paycom.uz/"));
       expect(payme).toBeDefined();
       expect(Buffer.from(new URL(payme!).pathname.slice(1), "base64").toString()).toContain(`ac.order_id=${order.id};a=${order.amount * 100}`);

@@ -3,9 +3,9 @@ import { clickEnabled, config, paymeEnabled } from "../../config";
 import { parseOrderId } from "./common";
 
 /**
- * Qisqa to'lov havolasi: https://<domen>/pay/<tizim>/<buyurtma>-<imzo>.
- * Telegram tugma bosilganda havolani ko'rsatadi — to'lov tizimining uzun manzili (kassa ID lari, summa)
- * o'rniga shu qisqa manzil ko'rinadi; server uni to'lov sahifasiga yo'naltiradi (api/payRedirect.ts).
+ * Qisqa to'lov havolasi: https://<domen>/pay/<tizim>/<buyurtma>-<imzo>; server uni to'lov sahifasiga yo'naltiradi
+ * (api/payRedirect.ts). Bot tugmalari endi to'g'ridan-to'g'ri to'lov tizimiga olib boradi (ilova ochilishi uchun) —
+ * bu manzil ilgari yuborilgan xabarlardagi tugmalar ishlashda davom etishi uchun saqlanadi.
  */
 
 export type PayProvider = "payme" | "click";

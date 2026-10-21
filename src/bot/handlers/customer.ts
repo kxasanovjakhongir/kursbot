@@ -118,7 +118,8 @@ pm.command("start", async (ctx) => {
   if (entry.kind === "unavailable") await ctx.reply(await ctx.t("link_unavailable"), { parse_mode: "HTML" });
 
   if (!user.phone) {
-    await prisma.user.update({ where: { id: user.id }, data: { lastProduct: null } });
+    // Takroriy /start da (allaqachon bo'sh) bazaga yozilmaydi
+    if (user.lastProduct !== null) ctx.user = await prisma.user.update({ where: { id: user.id }, data: { lastProduct: null } });
     await askPhone(ctx, null);
     return;
   }

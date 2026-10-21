@@ -61,6 +61,22 @@ services:
 
   db:
     image: postgres:16-alpine
+    # Xotira sozlamalari mem_limit (1 GB) ga moslangan; standart (128 MB bufer) kichik serverlar uchun.
+    # synchronous_commit yoqiq qoladi — to'lov yozuvlari yo'qolmasligi uchun
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=768MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      - -c
+      - random_page_cost=1.1
+      - -c
+      - max_wal_size=1GB
     environment:
       POSTGRES_USER: bot
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env.production da majburiy}

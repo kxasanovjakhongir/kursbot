@@ -1,6 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Api } from "grammy";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../src/db";
+import { addAdmin, getAdmin } from "../src/services/admins";
 import { addCard } from "../src/services/cards";
 import { approveOrder, attachReceipt, createOrder, expireStaleOrders, rejectOrder } from "../src/services/orders";
 import { decideJoinRequest, grantAccess } from "../src/services/access";
@@ -38,6 +40,31 @@ const file = (u: string) => ({ fileId: `f-${u}`, fileUniqueId: u, fileType: "pho
 describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
   beforeEach(reset);
   afterAll(() => prisma.$disconnect());
+
+  it("admin tekshiruvi: «admin emas» eslab qolinadi (bazaga qayta murojaat yo'q), qo'shish va olib tashlash darhol kuchga kiradi", async () => {
+    const id = 7_700_001n;
+    let reads = 0;
+    let counting = true;
+    // Prisma tinglovchisini olib tashlab bo'lmaydi — test tugagach sanash to'xtatiladi
+    prisma.$on("query", (e: Prisma.QueryEvent) => {
+      if (counting && e.query.startsWith("SELECT") && e.query.includes('"public"."admins"')) reads++;
+    });
+    try {
+      expect(await getAdmin(id)).toBeNull();
+      expect(await getAdmin(id)).toBeNull();
+      expect(reads).toBe(1);
+      // Bot/panel orqali qo'shildi — keyingi update dayoq admin
+      await addAdmin(id, "admin", "Yangi");
+      expect((await getAdmin(id))?.role).toBe("admin");
+      // Admin javobi eslab qolinmaydi: har safar bazadan (TZ 11.5) — olib tashlansa darhol huquqsiz
+      const before = reads;
+      await prisma.admin.updateMany({ where: { telegramId: id }, data: { isActive: false } });
+      expect(await getAdmin(id)).toBeNull();
+      expect(reads).toBe(before + 1);
+    } finally {
+      counting = false;
+    }
+  });
 
   it("T-04 / BR-01: 'Olaman' ikki marta — bitta buyurtma", async () => {
     const u = await user(100n);

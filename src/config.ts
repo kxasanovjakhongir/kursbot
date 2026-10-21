@@ -57,10 +57,12 @@ const schema = z.object({
   LOG_LEVEL: z.string().default("info"),
 
   // --- Unumdorlik va barqarorlik ---
-  // Bir vaqtda qayta ishlanadigan update lar (bitta chat ichida tartib baribir saqlanadi)
-  BOT_CONCURRENCY: z.coerce.number().int().min(1).max(1000).default(50),
-  // Webhook: Telegram bir vaqtda ochadigan ulanishlar (1–100)
-  WEBHOOK_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(100).default(40),
+  // Polling: bir vaqtda qayta ishlanadigan update lar (bitta chat ichida tartib baribir saqlanadi).
+  // O'tkazuvchanlik ≈ BOT_CONCURRENCY ÷ bitta update vaqti (asosan Telegram API javobini kutish)
+  BOT_CONCURRENCY: z.coerce.number().int().min(1).max(1000).default(100),
+  // Webhook: Telegram bir vaqtda ochadigan ulanishlar (1–100). Har bir ulanish update qayta ishlanib
+  // bo'lguncha band — o'tkazuvchanlik ≈ WEBHOOK_MAX_CONNECTIONS ÷ bitta update vaqti. 100 — Telegram maksimumi
+  WEBHOOK_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(100).default(100),
   // PostgreSQL ulanishlar puli (bitta instance uchun) va bo'sh ulanish kutish vaqti (soniya)
   DB_POOL_SIZE: z.coerce.number().int().min(1).max(200).default(20),
   DB_POOL_TIMEOUT: z.coerce.number().int().min(1).max(120).default(15),

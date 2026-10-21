@@ -1,4 +1,5 @@
 import type { Api } from "grammy";
+import { Prisma } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db";
 import { logger } from "../lib/logger";
@@ -47,6 +48,27 @@ async function maintenance(): Promise<void> {
   }
 }
 
+/** Bazaga ulanish vaqtincha uzildi (baza qayta ishga tushdi, tarmoq uzilishi) — Prisma keyingi so'rovda qayta ulanadi */
+const TRANSIENT_DB_CODES = new Set(["P1001", "P1002", "P1008", "P1017", "P2024"]);
+export function isTransientDbError(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientInitializationError) return true;
+  if (err instanceof Prisma.PrismaClientKnownRequestError && TRANSIENT_DB_CODES.has(err.code)) return true;
+  const message = err instanceof Error ? err.message : "";
+  return /Server has closed the connection|Can't reach database server|Timed out fetching a new connection/i.test(message);
+}
+
+/** Ketma-ket shuncha marta uzilish bo'lsa — endi vaqtinchalik emas: xato (panel «Xatoliklar») */
+export const TRANSIENT_FAILURES_BEFORE_ERROR = 3;
+
+/**
+ * Fon vazifasi xatosi qanday yoziladi. Bir martalik ulanish uzilishi (masalan, baza qayta ishga tushdi) —
+ * keyingi ishga tushishda o'zi tiklanadi: ogohlantirish. Ketma-ket takrorlansa yoki boshqa xato — xato.
+ */
+export function nextFailure(previous: number, err: unknown): { count: number; level: "warn" | "error" } {
+  const count = isTransientDbError(err) ? previous + 1 : Math.max(previous + 1, TRANSIENT_FAILURES_BEFORE_ERROR);
+  return { count, level: count < TRANSIENT_FAILURES_BEFORE_ERROR ? "warn" : "error" };
+}
+
 interface Job {
   name: string;
   intervalMs: number;
@@ -76,16 +98,23 @@ export function startBackgroundJobs(api: Api): () => Promise<void> {
   const timers: NodeJS.Timeout[] = [];
   let stopped = false;
 
-  const tick = (job: Job, busy: { v: boolean }) => {
+  const tick = (job: Job, busy: { v: boolean }, failures: { n: number }) => {
     if (stopped || busy.v) return; // oldingi ishga tushish hali tugamagan
     busy.v = true;
     const task = (async () => {
       try {
         const done = job.leaseMs > 0 ? await withLease(`job:${job.name}`, job.leaseMs, () => job.run(api)) : await job.run(api);
         jobRuns.inc({ job: job.name, result: done === null ? "skipped" : "ok" });
+        failures.n = 0;
       } catch (err) {
         jobRuns.inc({ job: job.name, result: "error" });
-        logger.error({ err, job: job.name }, "fon vazifasi xatosi");
+        const failure = nextFailure(failures.n, err);
+        failures.n = failure.count;
+        if (failure.level === "warn") {
+          logger.warn({ err, job: job.name, attempt: failures.n }, "fon vazifasi: bazaga ulanish vaqtincha uzildi — keyingi ishga tushishda qayta urinadi");
+        } else {
+          logger.error({ err, job: job.name, ...(failures.n > 1 && { consecutiveFailures: failures.n }) }, "fon vazifasi xatosi");
+        }
       } finally {
         busy.v = false;
       }
@@ -96,8 +125,9 @@ export function startBackgroundJobs(api: Api): () => Promise<void> {
 
   for (const job of JOBS) {
     const busy = { v: false };
-    timers.push(setTimeout(() => tick(job, busy), job.firstRunMs));
-    timers.push(setInterval(() => tick(job, busy), job.intervalMs));
+    const failures = { n: 0 };
+    timers.push(setTimeout(() => tick(job, busy, failures), job.firstRunMs));
+    timers.push(setInterval(() => tick(job, busy, failures), job.intervalMs));
   }
 
   return async () => {

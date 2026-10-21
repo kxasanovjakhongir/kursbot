@@ -10,6 +10,8 @@ import { normalizeTelegramUsername } from "../src/lib/telegramUsername";
 import { formatCourseName } from "../src/lib/format";
 import { telegramHtmlError } from "../src/lib/telegramHtml";
 import { editableTextError } from "../src/services/texts";
+import { Prisma } from "@prisma/client";
+import { isTransientDbError, nextFailure, TRANSIENT_FAILURES_BEFORE_ERROR } from "../src/services/jobs";
 import { uz as uzTexts } from "../src/i18n/locales/uz";
 import { EDITABLE_TEXT_KEYS } from "../src/i18n/catalog";
 import { exportPart, summaryLines, type ExportRow, type ExportSource } from "../src/services/export/rows";
@@ -219,5 +221,26 @@ describe("eksportni qismlarga bo'lish", () => {
     expect(summaryLines(source(11, 4).summary).some(([k]) => k === "Qism")).toBe(false);
     expect(exportFileName("pdf", new Date("2026-10-01T10:30:00Z"), 2)).toBe("users-2026-10-01-1530-2qism.pdf");
     expect(exportFileName("pdf", new Date("2026-10-01T10:30:00Z"))).toBe("users-2026-10-01-1530.pdf");
+  });
+});
+
+describe("fon vazifalari: bazaga ulanish uzilishi", () => {
+  const closed = new Prisma.PrismaClientKnownRequestError("Invalid `prisma.$queryRaw()` invocation:\n\nServer has closed the connection.", { code: "P1017", clientVersion: "6" });
+  const unreachable = new Prisma.PrismaClientInitializationError("Can't reach database server at `db:5432`", "6");
+  const bug = new TypeError("x is undefined");
+
+  it("vaqtinchalik uzilishlar taniladi, boshqa xatolar — yo'q", () => {
+    expect(isTransientDbError(closed)).toBe(true);
+    expect(isTransientDbError(unreachable)).toBe(true);
+    expect(isTransientDbError(new Prisma.PrismaClientKnownRequestError("pool", { code: "P2024", clientVersion: "6" }))).toBe(true);
+    expect(isTransientDbError(new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "6" }))).toBe(false);
+    expect(isTransientDbError(bug)).toBe(false);
+  });
+
+  it("bir martalik uzilish — ogohlantirish; ketma-ket takrorlansa yoki boshqa xato — xato (panel)", () => {
+    expect(nextFailure(0, closed)).toEqual({ count: 1, level: "warn" });
+    expect(nextFailure(1, unreachable)).toEqual({ count: 2, level: "warn" });
+    expect(nextFailure(TRANSIENT_FAILURES_BEFORE_ERROR - 1, closed).level).toBe("error");
+    expect(nextFailure(0, bug)).toEqual({ count: TRANSIENT_FAILURES_BEFORE_ERROR, level: "error" });
   });
 });

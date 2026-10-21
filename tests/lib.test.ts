@@ -11,7 +11,8 @@ import { formatCourseName } from "../src/lib/format";
 import { telegramHtmlError } from "../src/lib/telegramHtml";
 import { editableTextError } from "../src/services/texts";
 import { Prisma } from "@prisma/client";
-import { isTransientDbError, nextFailure, TRANSIENT_FAILURES_BEFORE_ERROR } from "../src/services/jobs";
+import { nextFailure, TRANSIENT_FAILURES_BEFORE_ERROR } from "../src/services/jobs";
+import { isTransientDbError, isTransientDbMessage } from "../src/lib/dbErrors";
 import { uz as uzTexts } from "../src/i18n/locales/uz";
 import { EDITABLE_TEXT_KEYS } from "../src/i18n/catalog";
 import { exportPart, summaryLines, type ExportRow, type ExportSource } from "../src/services/export/rows";
@@ -235,6 +236,17 @@ describe("fon vazifalari: bazaga ulanish uzilishi", () => {
     expect(isTransientDbError(new Prisma.PrismaClientKnownRequestError("pool", { code: "P2024", clientVersion: "6" }))).toBe(true);
     expect(isTransientDbError(new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "6" }))).toBe(false);
     expect(isTransientDbError(bug)).toBe(false);
+    // Prisma "error" hodisasi (db.ts) — faqat matn
+    expect(isTransientDbMessage("Invalid `prisma.$queryRaw()` invocation: Server has closed the connection.")).toBe(true);
+    expect(isTransientDbMessage("Unique constraint failed on the fields: (`code`)")).toBe(false);
+    // Baza to'xtatilganda puldagi har bir ulanish (quaint): 57P01
+    expect(
+      isTransientDbMessage(
+        'Error in PostgreSQL connection: Error { kind: Db, cause: Some(DbError { severity: "FATAL", code: SqlState(E57P01), message: "terminating connection due to administrator command" }) }',
+      ),
+    ).toBe(true);
+    expect(isTransientDbMessage("FATAL: the database system is starting up")).toBe(true);
+    expect(isTransientDbMessage("Error in PostgreSQL connection: Error { kind: Db, cause: Some(DbError { code: SqlState(E42P01) }) }")).toBe(false);
   });
 
   it("bir martalik uzilish — ogohlantirish; ketma-ket takrorlansa yoki boshqa xato — xato (panel)", () => {

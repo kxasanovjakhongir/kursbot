@@ -3,6 +3,7 @@ import { config } from "./config";
 import { logger } from "./lib/logger";
 import { setErrorLogStore } from "./lib/errorSink";
 import { dbQueryDuration } from "./lib/metrics";
+import { isTransientDbMessage } from "./lib/dbErrors";
 
 /**
  * Ulanishlar puli: DATABASE_URL da connection_limit / pool_timeout berilmagan bo'lsa .env dagi
@@ -33,6 +34,10 @@ prisma.$on("query", (e) => {
   if (e.duration > SLOW_QUERY_MS) logger.warn({ ms: e.duration, query: e.query.slice(0, 300) }, "sekin SQL so'rov");
 });
 prisma.$on("warn", (e) => logger.warn({ target: e.target }, e.message));
-prisma.$on("error", (e) => logger.error({ target: e.target }, e.message));
+// Ulanish uzilishi (baza qayta ishga tushdi) — xato chaqiruvchiga ham qaytadi va o'sha yerda yoziladi
+// (fon vazifasi, bot update i); bu yerda ikkinchi marta «Xatoliklar» ga tushmasin — ogohlantirish
+prisma.$on("error", (e) =>
+  isTransientDbMessage(e.message) ? logger.warn({ target: e.target }, e.message) : logger.error({ target: e.target }, e.message),
+);
 // Texnik xatolar paneldagi "Xatoliklar" bo'limi uchun shu bazaga yoziladi
 setErrorLogStore(prisma);

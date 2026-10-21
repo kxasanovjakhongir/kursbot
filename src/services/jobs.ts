@@ -1,5 +1,5 @@
 import type { Api } from "grammy";
-import { Prisma } from "@prisma/client";
+import { isTransientDbError } from "../lib/dbErrors";
 import { config } from "../config";
 import { prisma } from "../db";
 import { logger } from "../lib/logger";
@@ -46,15 +46,6 @@ async function maintenance(): Promise<void> {
   if (messages || events || state || orders || errors || supportButtons) {
     logger.info({ messages, events, state, orders, errors, supportButtons }, "texnik tozalash");
   }
-}
-
-/** Bazaga ulanish vaqtincha uzildi (baza qayta ishga tushdi, tarmoq uzilishi) — Prisma keyingi so'rovda qayta ulanadi */
-const TRANSIENT_DB_CODES = new Set(["P1001", "P1002", "P1008", "P1017", "P2024"]);
-export function isTransientDbError(err: unknown): boolean {
-  if (err instanceof Prisma.PrismaClientInitializationError) return true;
-  if (err instanceof Prisma.PrismaClientKnownRequestError && TRANSIENT_DB_CODES.has(err.code)) return true;
-  const message = err instanceof Error ? err.message : "";
-  return /Server has closed the connection|Can't reach database server|Timed out fetching a new connection/i.test(message);
 }
 
 /** Ketma-ket shuncha marta uzilish bo'lsa — endi vaqtinchalik emas: xato (panel «Xatoliklar») */

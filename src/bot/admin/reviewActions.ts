@@ -9,6 +9,7 @@ import { approveOrder, getOrderFull, rejectOrder, transition, type ReviewerRef }
 import { KickFailedError, revokeGrant } from "../../services/membership";
 import { grantAccess } from "../../services/access";
 import { trackEvent } from "../../services/events";
+import { sendPaymentToCrm } from "../../services/crmPayments";
 import { displayCourseName, getSettings } from "../../services/settings";
 import { REJECT_REASONS, type RejectReasonCode } from "../../services/texts";
 import { label, translate } from "../../i18n";
@@ -70,6 +71,8 @@ export async function approveAndNotify(api: Api, orderId: bigint, reviewer: Revi
 export async function deliverApproved(api: Api, orderId: bigint): Promise<void> {
   const order = (await getOrderFull(orderId))!;
   await trackEvent(order.userId, "approved", { orderId: orderId.toString(), product: order.product.code, method: order.paymentMethod });
+  // To'lov CRM'ga: mijoz xabari va kirishga to'sqinlik qilmaydi (xatolar faqat logga)
+  void sendPaymentToCrm(orderId);
 
   let grants: Awaited<ReturnType<typeof grantAccess>> = [];
   try {

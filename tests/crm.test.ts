@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildLeadPayload, sendLeadToCrm } from "../src/services/crm";
+import { prisma } from "../src/db";
+import { buildLeadPayload, postToCrm, sendLeadToCrm } from "../src/services/crm";
+import { buildPaymentPayload, crmTransactionId, sendPaymentToCrm } from "../src/services/crmPayments";
 
 const user = {
   id: 1n,
@@ -70,5 +72,56 @@ describe("sendLeadToCrm", () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error("timeout"));
     expect(await sendLeadToCrm(user, { url: URL, fetchImpl, retryDelayMs: 0 })).toBe(false);
     expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("CRM to'lov payload", () => {
+  const facts = {
+    transactionId: "payme-6512ab34",
+    amount: 1_500_000,
+    method: "payme" as const,
+    telegramId: 123456789n,
+    phone: "+998901234567",
+    courseTitle: "Python",
+  };
+
+  it("CRM kutgan formatda", () => {
+    expect(buildPaymentPayload(facts)).toEqual({
+      transaction_id: "payme-6512ab34",
+      amount: 1500000,
+      currency: "UZS",
+      method: "payme",
+      telegram_id: "123456789",
+      phone: "+998901234567",
+      kurs: "Python",
+    });
+  });
+  it("telefon + bilan, yo'q bo'lsa bo'sh satr", () => {
+    expect(buildPaymentPayload({ ...facts, phone: "998901234567" }).phone).toBe("+998901234567");
+    expect(buildPaymentPayload({ ...facts, phone: null }).phone).toBe("");
+  });
+  it("tranzaksiya raqami: to'lov tizimi raqami bo'lsa shu, bo'lmasa buyurtma raqami", () => {
+    expect(crmTransactionId("click", "987", 5n)).toBe("click-987");
+    expect(crmTransactionId("card", null, 5n)).toBe("card-order-5");
+  });
+  it("faqat payme va click CRM'ga yuboriladi", async () => {
+    const spy = vi.spyOn(prisma.order, "findUnique").mockResolvedValue({ id: 7n, paymentMethod: "card" } as never);
+    const fetchImpl = vi.fn();
+    expect(await sendPaymentToCrm(7n, { url: URL, fetchImpl })).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+  it("URL sozlanmagan bo'lsa to'lov so'rovi yuborilmaydi", async () => {
+    const fetchImpl = vi.fn();
+    expect(await sendPaymentToCrm(1n, { url: "", fetchImpl })).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("postToCrm POST JSON yuboradi va 4xx da qayta urinmaydi", async () => {
+    const ok = vi.fn().mockResolvedValue(res(200));
+    expect(await postToCrm(URL, buildPaymentPayload(facts), "to'lov", {}, { fetchImpl: ok })).toBe(true);
+    expect(JSON.parse(ok.mock.calls[0][1].body).transaction_id).toBe("payme-6512ab34");
+    const bad = vi.fn().mockResolvedValue(res(400, "xato"));
+    expect(await postToCrm(URL, {}, "to'lov", {}, { fetchImpl: bad, retryDelayMs: 0 })).toBe(false);
+    expect(bad).toHaveBeenCalledTimes(1);
   });
 });

@@ -95,7 +95,7 @@ export const uz = {
 
   // ---------- Tasdiqlash / rad etish ----------
   approved: "🎉 <b>To'lov muvaffaqiyatli amalga oshirildi!</b>\n\nEndi kurs darslaridan foydalanishingiz mumkin. Yopiq kanalga quyidagi tugma orqali qo'shiling — link faqat siz uchun va {kun} kun amal qiladi.",
-  approved_button: "📚 Kursni boshlash",
+  approved_button: "📚 Kanalga qo'shilish",
   approved_no_link: "🎉 <b>To'lov muvaffaqiyatli amalga oshirildi!</b>\n\nEndi kurs darslaridan foydalanishingiz mumkin. Kanal linkini admin tez orada yuboradi.",
   btn_join: "➡️ Kanalga qo'shilish: {mahsulot}",
   btn_start_course: "📚 Kursni boshlash",
@@ -104,7 +104,7 @@ export const uz = {
   btn_contact_admin: "👤 Admin bilan bog'lanish",
   contact_admin_hint: "Admin bilan bog'lanish uchun: {kontakt}",
   support_not_configured: "ℹ️ Yordam xizmati hozircha sozlanmagan.",
-  joined_button: "📚 Darsni boshlash",
+  joined_button: "📚 Kursni boshlash",
   joined_welcome: "🎉 Xush kelibsiz! {mahsulot} kanaldagi birinchi postdan boshlanadi.",
 
   // ---------- Rad etish sabablari (mijozga) ----------

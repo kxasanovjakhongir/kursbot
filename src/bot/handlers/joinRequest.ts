@@ -50,7 +50,7 @@ joinRequest.on("chat_join_request", async (ctx) => {
     const { user, product: joined } = decision.grant;
     const lang = await userLang(user);
     const text = await translate(lang, "joined_welcome", { mahsulot: await displayCourseName(joined.title) });
-    // «Darsni boshlash»: endi a'zo — havola kanalning boshiga (birinchi postga) olib boradi
+    // «Kursni boshlash»: endi a'zo — havola kanalning boshiga (birinchi postga) olib boradi
     const id = joined.channelId?.toString();
     const startUrl = id?.startsWith("-100") ? `https://t.me/c/${id.slice(4)}/1` : null;
     const buttonText = startUrl ? (await translate(lang, "joined_button")).trim() : "";

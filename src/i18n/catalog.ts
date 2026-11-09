@@ -143,7 +143,7 @@ export const TEXT_GROUPS: TextGroup[] = [
     description: "Admin chekni tasdiqlaganda yoki rad etganda mijozga boradigan xabarlar",
     keys: {
       approved: { title: "To'lov tasdiqlandi" },
-      approved_button: { title: "To'lov tasdiqlandi: «Kursni boshlash» tugmasi", hint: "Tugma yozuvi (yopiq kanalga olib boradi). Formatsiz, qisqa matn", format: "popup", max: 40 },
+      approved_button: { title: "To'lov tasdiqlandi: «Kanalga qo'shilish» tugmasi", hint: "Tugma yozuvi (yopiq kanalga olib boradi). Formatsiz, qisqa matn", format: "popup", max: 40 },
       approved_no_link: { title: "To'lov tasdiqlandi (kanal linki keyinroq)" },
       rejected: { title: "Chek rad etildi", hint: "{sabab} — quyidagi sabablardan biri" },
       reject_unreadable: { title: "Sabab: chek o'qilmaydi", format: "part" },
@@ -160,7 +160,7 @@ export const TEXT_GROUPS: TextGroup[] = [
     description: "Yopiq kanalga kirish, muddat va havolalar",
     keys: {
       joined_welcome: { title: "Kanalga qo'shildi" },
-      joined_button: { title: "Kanalga qo'shildi: «Darsni boshlash» tugmasi", hint: "Tugma yozuvi (kanalning birinchi postiga olib boradi). Formatsiz, qisqa matn", format: "popup", max: 40 },
+      joined_button: { title: "Kanalga qo'shildi: «Kursni boshlash» tugmasi", hint: "Tugma yozuvi (kanalning birinchi postiga olib boradi). Formatsiz, qisqa matn", format: "popup", max: 40 },
       access_expiring: { title: "Kirish muddati tugayapti" },
       access_expired: { title: "Kirish muddati tugadi" },
       access_removed: { title: "Kanaldan chiqarildi" },

@@ -86,9 +86,16 @@ export async function deliverApproved(api: Api, orderId: bigint): Promise<void> 
   let sent = null;
   try {
     const kb = new InlineKeyboard();
-    for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: await displayCourseName(g.product.title) }), g.inviteLink!).row();
-    // Kurs sahifasi: darslar va kanal havolasi (to'plam bo'lsa — tarkibidagi kurslar)
-    kb.text(label(lang, "btn_start_course"), `p:${order.product.code}`);
+    if (withLinks.length === 1) {
+      // Bitta kurs: bitta tugma — «Kursni boshlash» shaxsiy havola orqali to'g'ridan-to'g'ri yopiq kanalga olib boradi
+      kb.url(await translate(lang, "approved_button"), withLinks[0].inviteLink!);
+    } else if (withLinks.length > 1) {
+      // To'plam: har bir kurs kanaliga alohida havola kerak
+      for (const g of withLinks) kb.url(label(lang, "btn_join", { mahsulot: await displayCourseName(g.product.title) }), g.inviteLink!).row();
+    } else {
+      // Havola yaratilmadi: kurs sahifasi (kanal havolasini keyin shu yerdan olish mumkin)
+      kb.text(label(lang, "btn_start_course"), `p:${order.product.code}`);
+    }
     const text = withLinks.length > 0 ? await translate(lang, "approved", { kun: settings.invite_link_days }) : await translate(lang, "approved_no_link");
     sent = await notifyUser(api, order.user, "success", text, { reply_markup: kb });
   } catch (err) {

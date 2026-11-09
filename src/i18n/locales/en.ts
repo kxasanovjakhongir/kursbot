@@ -85,6 +85,7 @@ export const en: Messages = {
   resend_hint: "📎 Send a photo or PDF of the receipt here.",
 
   approved: "🎉 <b>Payment successful!</b>\n\nYou can now use the course lessons. Join the private channel using the button below — the link is personal and valid for {kun} days.",
+  approved_button: "📚 Start the course",
   approved_no_link: "🎉 <b>Payment successful!</b>\n\nYou can now use the course lessons. An admin will send you the channel link shortly.",
   btn_join: "➡️ Join the channel: {mahsulot}",
   btn_start_course: "📚 Start the course",

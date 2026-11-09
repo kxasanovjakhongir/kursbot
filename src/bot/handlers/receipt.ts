@@ -9,6 +9,7 @@ import { z } from "zod";
 import { SharedState } from "../../services/sharedState";
 import { forwardReceiptToAdmins, submitReceipt } from "../receiptFlow";
 import { ID_RE } from "../ui/callbacks";
+import { lastPaymentOrderId } from "../lastPayment";
 
 export const receipt = new Composer<BotContext>();
 const pm = receipt.chatType("private");
@@ -51,6 +52,13 @@ async function routeReceipt(ctx: BotContext, file: IncomingReceipt): Promise<voi
   const open = (await listOpenOrders(user.id)).filter((o) => o.status !== "receipt_sent");
 
   if (open.length === 1) return submit(ctx, open[0].id, file);
+
+  // Bir nechta ochiq buyurtma: mijoz oxirgi ochgan to'lov oynasi (hali ochiq bo'lsa) — chek shunga tegishli
+  if (open.length > 1) {
+    const lastId = await lastPaymentOrderId(ctx.from!.id);
+    const last = lastId === null ? undefined : open.find((o) => o.id === lastId);
+    if (last) return submit(ctx, last.id, file);
+  }
 
   await stash.set(ctx.from!.id, file);
   if (open.length > 1) {

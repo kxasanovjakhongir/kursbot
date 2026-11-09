@@ -143,6 +143,7 @@ export const TEXT_GROUPS: TextGroup[] = [
     description: "Admin chekni tasdiqlaganda yoki rad etganda mijozga boradigan xabarlar",
     keys: {
       approved: { title: "To'lov tasdiqlandi" },
+      approved_button: { title: "To'lov tasdiqlandi: «Kursni boshlash» tugmasi", hint: "Tugma yozuvi (yopiq kanalga olib boradi). Formatsiz, qisqa matn", format: "popup", max: 40 },
       approved_no_link: { title: "To'lov tasdiqlandi (kanal linki keyinroq)" },
       rejected: { title: "Chek rad etildi", hint: "{sabab} — quyidagi sabablardan biri" },
       reject_unreadable: { title: "Sabab: chek o'qilmaydi", format: "part" },

@@ -15,6 +15,7 @@ import { hasCourseAccess, isBlockedError, isUnavailableFileError, lessonPosition
 import { checkOwnership, getActiveProduct, getViewableProduct } from "../../services/products";
 import { recordLinkVisit, resolveEntry } from "../../services/campaignLinks";
 import { applyPriceDrop, cancelOrder, createOrder } from "../../services/orders";
+import { rememberPaymentScreen } from "../lastPayment";
 import { refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
 import { sendLeadToCrm } from "../../services/crm";
@@ -252,6 +253,7 @@ pm.callbackQuery(/^buy:([\w-]{1,32})$/, async (ctx) => {
   if (res.kind === "created") {
     await trackEvent(user.id, "order", { product: product.code, orderId: res.order.id.toString() });
   }
+  await rememberPaymentScreen(ctx.from.id, res.order.id);
   // To'lov ma'lumoti alohida xabar — bank ilovasiga o'tib-qaytganda chatda turadi
   await renderNew(ctx, await paymentScreen(ctx, { ...res.order, product }));
 });
@@ -262,6 +264,7 @@ pm.callbackQuery(new RegExp(`^pay:${ID_RE}$`), async (ctx) => {
     await ctx.answerCallbackQuery({ text: await ctx.t("receipt_order_closed"), show_alert: true });
     return;
   }
+  await rememberPaymentScreen(ctx.from.id, order.id);
   await render(ctx, await paymentScreen(ctx, await applyPriceDrop(order, order.product)));
 });
 

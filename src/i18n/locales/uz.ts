@@ -104,6 +104,7 @@ export const uz = {
   btn_contact_admin: "👤 Admin bilan bog'lanish",
   contact_admin_hint: "Admin bilan bog'lanish uchun: {kontakt}",
   support_not_configured: "ℹ️ Yordam xizmati hozircha sozlanmagan.",
+  joined_button: "📚 Darsni boshlash",
   joined_welcome: "🎉 Xush kelibsiz! {mahsulot} kanaldagi birinchi postdan boshlanadi.",
 
   // ---------- Rad etish sabablari (mijozga) ----------

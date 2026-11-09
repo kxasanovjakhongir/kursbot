@@ -93,6 +93,7 @@ export const ru: Messages = {
   btn_contact_admin: "👤 Связаться с администратором",
   contact_admin_hint: "Связаться с администратором: {kontakt}",
   support_not_configured: "ℹ️ Служба поддержки пока не настроена.",
+  joined_button: "📚 Начать урок",
   joined_welcome: "🎉 Добро пожаловать! {mahsulot} начинается с первого поста в канале.",
 
   reject_unreadable: "Фото чека нечёткое, пожалуйста, отправьте полный скриншот",

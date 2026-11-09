@@ -160,6 +160,7 @@ export const TEXT_GROUPS: TextGroup[] = [
     description: "Yopiq kanalga kirish, muddat va havolalar",
     keys: {
       joined_welcome: { title: "Kanalga qo'shildi" },
+      joined_button: { title: "Kanalga qo'shildi: «Darsni boshlash» tugmasi", hint: "Tugma yozuvi (kanalning birinchi postiga olib boradi). Formatsiz, qisqa matn", format: "popup", max: 40 },
       access_expiring: { title: "Kirish muddati tugayapti" },
       access_expired: { title: "Kirish muddati tugadi" },
       access_removed: { title: "Kanaldan chiqarildi" },

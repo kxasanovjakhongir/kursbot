@@ -9,7 +9,12 @@ USE_DOCKER="${USE_DOCKER:-1}"
 log() { printf '%s %s\n' "$(date -u +%H:%M:%S)" "$*" >&2; }
 die() { log "XATO: $*"; exit 1; }
 
-dc() { docker compose --env-file "$ENV_FILE" -f "$ROOT/docker-compose.yml" "$@"; }
+# docker-compose.override.yml (serverga xos sozlamalar, masalan IPv4) bo'lsa — u ham qo'llanadi: -f berilganda Compose uni o'zi o'qimaydi
+dc() {
+  local files=(-f "$ROOT/docker-compose.yml")
+  [[ -f "$ROOT/docker-compose.override.yml" ]] && files+=(-f "$ROOT/docker-compose.override.yml")
+  docker compose --env-file "$ENV_FILE" "${files[@]}" "$@"
+}
 
 # Baza buyrug'i: serverda db konteyneri ichida, lokal testda — host dagi klient
 pg() {

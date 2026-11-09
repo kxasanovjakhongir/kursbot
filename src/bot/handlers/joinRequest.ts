@@ -1,4 +1,4 @@
-import { Composer, GrammyError } from "grammy";
+import { Composer, GrammyError, InlineKeyboard } from "grammy";
 import type { BotContext } from "../context";
 import { notifyUser, sendToAdminGroup } from "../notify";
 import { escapeHtml } from "../../lib/format";
@@ -48,8 +48,13 @@ joinRequest.on("chat_join_request", async (ctx) => {
     }
     await trackEvent(decision.grant.userId, "joined", { product: decision.grant.product.code });
     const { user, product: joined } = decision.grant;
-    const text = await translate(await userLang(user), "joined_welcome", { mahsulot: await displayCourseName(joined.title) });
-    await notifyUser(ctx.api, user, "success", text);
+    const lang = await userLang(user);
+    const text = await translate(lang, "joined_welcome", { mahsulot: await displayCourseName(joined.title) });
+    // «Darsni boshlash»: endi a'zo — havola kanalning boshiga (birinchi postga) olib boradi
+    const id = joined.channelId?.toString();
+    const startUrl = id?.startsWith("-100") ? `https://t.me/c/${id.slice(4)}/1` : null;
+    const buttonText = startUrl ? (await translate(lang, "joined_button")).trim() : "";
+    await notifyUser(ctx.api, user, "success", text, buttonText ? { reply_markup: new InlineKeyboard().url(buttonText, startUrl!) } : undefined);
     // 2-bosqich: instrument fayllari shu yerda yuboriladi (TZ 5.9, BR-23)
     return;
   }

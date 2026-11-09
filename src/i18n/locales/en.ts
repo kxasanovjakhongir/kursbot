@@ -94,6 +94,7 @@ export const en: Messages = {
   btn_contact_admin: "👤 Contact admin",
   contact_admin_hint: "To contact an admin: {kontakt}",
   support_not_configured: "ℹ️ Support is not configured yet.",
+  joined_button: "📚 Start the lesson",
   joined_welcome: "🎉 Welcome! {mahsulot} starts from the first post in the channel.",
 
   reject_unreadable: "The receipt photo is unclear, please send a full screenshot",

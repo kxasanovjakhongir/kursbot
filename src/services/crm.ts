@@ -49,6 +49,17 @@ export async function postToCrm(
   logFields: Record<string, string>,
   opts: Pick<SendOptions, "retryDelayMs" | "fetchImpl"> = {},
 ): Promise<boolean> {
+  return (await postToCrmStatus(url, payload, what, logFields, opts)).ok;
+}
+
+/** postToCrm bilan bir xil, lekin CRM javobining holat kodini ham qaytaradi (null — javob olinmadi) */
+export async function postToCrmStatus(
+  url: string,
+  payload: object,
+  what: string,
+  logFields: Record<string, string>,
+  opts: Pick<SendOptions, "retryDelayMs" | "fetchImpl"> = {},
+): Promise<{ ok: boolean; status: number | null }> {
   const doFetch = opts.fetchImpl ?? fetch;
   const retryDelayMs = opts.retryDelayMs ?? 2000;
   const body = JSON.stringify(payload);
@@ -68,12 +79,12 @@ export async function postToCrm(
         const moved = (await res.json().catch(() => null) as { movedToWon?: unknown } | null)?.movedToWon;
         if (moved === false) log.warn({ status: res.status, movedToWon: false }, `CRM: ${what} qabul qilindi, lekin lid 100% ga o'tmadi`);
         else log.info({ status: res.status, ...(typeof moved === "boolean" ? { movedToWon: moved } : {}) }, `CRM: ${what} yuborildi`);
-        return true;
+        return { ok: true, status: res.status };
       }
       const text = (await res.text().catch(() => "")).slice(0, 300);
       if (res.status < 500) {
         log.error({ status: res.status, response: text }, `CRM: ${what} rad etildi`);
-        return false;
+        return { ok: false, status: res.status };
       }
       log.warn({ status: res.status, attempt, response: text }, "CRM: server xatosi");
     } catch (err) {
@@ -82,7 +93,7 @@ export async function postToCrm(
     if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, retryDelayMs * attempt));
   }
   log.error({ attempts: MAX_ATTEMPTS }, `CRM: ${what} yuborilmadi`);
-  return false;
+  return { ok: false, status: null };
 }
 
 /** true — CRM qabul qildi; false — yuborilmadi (o'chiq, telefon yo'q yoki barcha urinishlar xato) */

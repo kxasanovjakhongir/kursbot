@@ -2,7 +2,7 @@ import type { PaymentMethod } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db";
 import { logger } from "../lib/logger";
-import { postToCrm, type SendOptions } from "./crm";
+import { postToCrmStatus, sendLeadToCrm, type SendOptions } from "./crm";
 import { TX_STATE } from "./payments/common";
 
 /**
@@ -47,7 +47,7 @@ export const crmTransactionId = (method: PaymentMethod, externalId: string | nul
 
 const CRM_METHODS: PaymentMethod[] = ["payme", "click"];
 
-export async function sendPaymentToCrm(orderId: bigint, opts: SendOptions = {}): Promise<boolean> {
+export async function sendPaymentToCrm(orderId: bigint, opts: SendOptions & { leadUrl?: string } = {}): Promise<boolean> {
   const url = opts.url ?? config.CRM_PAYMENT_WEBHOOK_URL;
   if (!url) return false;
   try {
@@ -69,7 +69,15 @@ export async function sendPaymentToCrm(orderId: bigint, opts: SendOptions = {}):
       phone: order.user.phone,
       courseTitle: order.product.title,
     });
-    return await postToCrm(url, payload, "to'lov", { orderId: orderId.toString(), transactionId: payload.transaction_id }, opts);
+    const fields = { orderId: orderId.toString(), transactionId: payload.transaction_id };
+    const first = await postToCrmStatus(url, payload, "to'lov", fields, opts);
+    if (first.ok) return true;
+    // CRM to'lovni faqat lid bor bo'lsa qabul qiladi (404). Telefon CRM ulanishidan oldin ulashilgan yoki lid yuborilmagan
+    // bo'lishi mumkin: avval lid yuboriladi, keyin to'lov qayta yuboriladi
+    if (first.status === 404 && (await sendLeadToCrm(order.user, { url: opts.leadUrl, fetchImpl: opts.fetchImpl, retryDelayMs: opts.retryDelayMs }))) {
+      return (await postToCrmStatus(url, payload, "to'lov (lid yuborilgach)", fields, opts)).ok;
+    }
+    return false;
   } catch (err) {
     logger.error({ err, orderId: orderId.toString() }, "CRM: to'lovni tayyorlashda xato");
     return false;

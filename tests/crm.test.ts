@@ -111,6 +111,45 @@ describe("CRM to'lov payload", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+  it("CRM 404 (lid yo'q) desa: avval lid yuboriladi, keyin to'lov qayta yuboriladi", async () => {
+    const order = {
+      id: 9n,
+      amount: 1000,
+      paymentMethod: "payme",
+      user: { id: 1n, telegramId: 123456789n, firstName: "Ali", lastName: null, username: null, phone: "+998901234567" },
+      product: { title: "Python" },
+      transactions: [{ externalId: "abc" }],
+    };
+    const spy = vi.spyOn(prisma.order, "findUnique").mockResolvedValue(order as never);
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(res(404, '{"success":false}'))
+      .mockResolvedValueOnce(res(200))
+      .mockResolvedValueOnce(res(200, '{"movedToWon":true}'));
+    expect(await sendPaymentToCrm(9n, { url: URL + "/payment", leadUrl: URL, fetchImpl, retryDelayMs: 0 })).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl.mock.calls[0][0]).toBe(URL + "/payment");
+    expect(fetchImpl.mock.calls[1][0]).toBe(URL);
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body).phone).toBe("+998901234567");
+    expect(fetchImpl.mock.calls[2][0]).toBe(URL + "/payment");
+    expect(JSON.parse(fetchImpl.mock.calls[2][1].body).transaction_id).toBe("payme-abc");
+    spy.mockRestore();
+  });
+  it("lid ham qabul qilinmasa to'lov qayta yuborilmaydi", async () => {
+    const order = {
+      id: 9n,
+      amount: 1000,
+      paymentMethod: "click",
+      user: { id: 1n, telegramId: 1n, firstName: "A", lastName: null, username: null, phone: "+998901234567" },
+      product: { title: "Python" },
+      transactions: [],
+    };
+    const spy = vi.spyOn(prisma.order, "findUnique").mockResolvedValue(order as never);
+    const fetchImpl = vi.fn().mockResolvedValue(res(404));
+    expect(await sendPaymentToCrm(9n, { url: URL + "/payment", leadUrl: URL, fetchImpl, retryDelayMs: 0 })).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
   it("URL sozlanmagan bo'lsa to'lov so'rovi yuborilmaydi", async () => {
     const fetchImpl = vi.fn();
     expect(await sendPaymentToCrm(1n, { url: "", fetchImpl })).toBe(false);

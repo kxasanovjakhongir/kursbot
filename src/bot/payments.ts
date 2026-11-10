@@ -5,6 +5,7 @@ import { escapeHtml, formatSum } from "../lib/format";
 import { logger } from "../lib/logger";
 import { KickFailedError, revokeGrant } from "../services/membership";
 import { trackEvent } from "../services/events";
+import { sendRefundToCrm } from "../services/crmPayments";
 import { displayCourseName } from "../services/settings";
 import { displayName, userLang } from "../services/users";
 import { translate } from "../i18n";
@@ -78,6 +79,8 @@ export async function onOnlineRefund(api: Api, orderId: bigint, provider: Paymen
     data: { status: "refunded", cancelledAt: new Date(), cancelReason: reason },
   });
   await trackEvent(order.userId, "order_refunded", { orderId: orderId.toString(), provider });
+  // Qaytarish CRM'ga: xato mijozga va jarayonga ta'sir qilmaydi (faqat logga yoziladi)
+  if (res.count === 1) void sendRefundToCrm(orderId);
 
   if (res.count === 1 && !order.user.isBanned) {
     const lang = await userLang(order.user);

@@ -120,6 +120,14 @@ const schema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
 
+  // To'lov qaytarilganda (Payme / Click bekor qildi yoki admin paneldan bekor qilindi) shu manzilga POST qilinadi. Bo'sh bo'lsa o'chiq
+  CRM_REFUND_WEBHOOK_URL: z
+    .string()
+    .url()
+    .refine((u) => u.startsWith("https://"), "https:// bilan boshlanishi kerak")
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+
   // --- Onlayn to'lov: Payme (Merchant API) ---
   // Kabinet (merchant.paycom.uz) → kassa ID va kalit. Ikkalasi bo'lsa Payme yoqiladi
   PAYME_MERCHANT_ID: optionalStr,

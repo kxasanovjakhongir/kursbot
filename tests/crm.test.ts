@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/db";
 import { buildLeadPayload, postToCrm, sendLeadToCrm } from "../src/services/crm";
-import { buildPaymentPayload, crmTransactionId, sendPaymentToCrm } from "../src/services/crmPayments";
+import { buildPaymentPayload, buildRefundPayload, crmTransactionId, sendPaymentToCrm, sendRefundToCrm } from "../src/services/crmPayments";
 
 const user = {
   id: 1n,
@@ -78,6 +78,7 @@ describe("sendLeadToCrm", () => {
 describe("CRM to'lov payload", () => {
   const facts = {
     transactionId: "payme-6512ab34",
+    orderId: 75n,
     amount: 1_500_000,
     method: "payme" as const,
     telegramId: 123456789n,
@@ -88,6 +89,7 @@ describe("CRM to'lov payload", () => {
   it("CRM kutgan formatda", () => {
     expect(buildPaymentPayload(facts)).toEqual({
       transaction_id: "payme-6512ab34",
+      order_id: "75",
       amount: 1500000,
       currency: "UZS",
       method: "payme",
@@ -162,5 +164,45 @@ describe("CRM to'lov payload", () => {
     const bad = vi.fn().mockResolvedValue(res(400, "xato"));
     expect(await postToCrm(URL, {}, "to'lov", {}, { fetchImpl: bad, retryDelayMs: 0 })).toBe(false);
     expect(bad).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CRM qaytarish (refund)", () => {
+  it("CRM kutgan formatda", () => {
+    expect(buildRefundPayload({ transactionId: "payme-abc", orderId: 75n, amount: 1000, telegramId: 123456789n })).toEqual({
+      transaction_id: "payme-abc",
+      order_id: "75",
+      amount: 1000,
+      telegram_id: "123456789",
+      status: "refunded",
+    });
+  });
+  it("URL sozlanmagan bo'lsa yuborilmaydi", async () => {
+    const fetchImpl = vi.fn();
+    expect(await sendRefundToCrm(1n, { url: "", fetchImpl })).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it("to'lov bilan bir xil transaction_id bilan yuboradi", async () => {
+    const order = {
+      id: 9n,
+      amount: 1000,
+      paymentMethod: "payme",
+      user: { telegramId: 123456789n },
+      transactions: [{ externalId: "abc" }],
+    };
+    const spy = vi.spyOn(prisma.order, "findUnique").mockResolvedValue(order as never);
+    const fetchImpl = vi.fn().mockResolvedValue(res(200));
+    expect(await sendRefundToCrm(9n, { url: URL + "/refund", fetchImpl })).toBe(true);
+    const body = JSON.parse(fetchImpl.mock.calls[0][1].body);
+    expect(fetchImpl.mock.calls[0][0]).toBe(URL + "/refund");
+    expect(body).toMatchObject({ transaction_id: "payme-abc", order_id: "9", amount: 1000, status: "refunded" });
+    spy.mockRestore();
+  });
+  it("karta buyurtmasi CRM'ga yuborilmagan — qaytarish ham yuborilmaydi", async () => {
+    const spy = vi.spyOn(prisma.order, "findUnique").mockResolvedValue({ id: 9n, paymentMethod: "card", user: {}, transactions: [] } as never);
+    const fetchImpl = vi.fn();
+    expect(await sendRefundToCrm(9n, { url: URL + "/refund", fetchImpl })).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

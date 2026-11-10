@@ -11,6 +11,8 @@ import { TX_STATE } from "./payments/common";
  */
 export interface CrmPaymentPayload {
   transaction_id: string;
+  /** Bizdagi buyurtma raqami (har xarid uchun noyob) — CRM har xaridni alohida buyurtma qilishi uchun */
+  order_id: string;
   /** So'mda */
   amount: number;
   currency: "UZS";
@@ -22,6 +24,7 @@ export interface CrmPaymentPayload {
 
 export interface PaymentFacts {
   transactionId: string;
+  orderId: bigint;
   amount: number;
   method: PaymentMethod;
   telegramId: bigint;
@@ -32,6 +35,7 @@ export interface PaymentFacts {
 export function buildPaymentPayload(f: PaymentFacts): CrmPaymentPayload {
   return {
     transaction_id: f.transactionId,
+    order_id: f.orderId.toString(),
     amount: f.amount,
     currency: "UZS",
     method: f.method,
@@ -63,6 +67,7 @@ export async function sendPaymentToCrm(orderId: bigint, opts: SendOptions & { le
     if (!order || !CRM_METHODS.includes(order.paymentMethod)) return false;
     const payload = buildPaymentPayload({
       transactionId: crmTransactionId(order.paymentMethod, order.transactions[0]?.externalId ?? null, order.id),
+      orderId: order.id,
       amount: order.amount,
       method: order.paymentMethod,
       telegramId: order.user.telegramId,
@@ -80,6 +85,56 @@ export async function sendPaymentToCrm(orderId: bigint, opts: SendOptions & { le
     return false;
   } catch (err) {
     logger.error({ err, orderId: orderId.toString() }, "CRM: to'lovni tayyorlashda xato");
+    return false;
+  }
+}
+
+/** To'lov qaytarilganda CRM'ga yuboriladigan tranzaksiya (CRM: transaction_id yoki order_id, amount — qaytarilgan summa) */
+export interface CrmRefundPayload {
+  transaction_id: string;
+  order_id: string;
+  /** Qaytarilgan summa, so'mda */
+  amount: number;
+  telegram_id: string;
+  status: "refunded";
+}
+
+export function buildRefundPayload(f: Pick<PaymentFacts, "transactionId" | "orderId" | "amount" | "telegramId">): CrmRefundPayload {
+  return {
+    transaction_id: f.transactionId,
+    order_id: f.orderId.toString(),
+    amount: f.amount,
+    telegram_id: f.telegramId.toString(),
+    status: "refunded",
+  };
+}
+
+/**
+ * To'lov qaytarilganini CRM'ga yuboradi (faqat CRM'ga to'lovi yuborilgan Payme / Click buyurtmalari uchun).
+ * transaction_id to'lov bilan bir xil — CRM qaysi to'lov qaytarilganini shundan biladi. CRM_REFUND_WEBHOOK_URL bo'sh bo'lsa hech narsa qilmaydi.
+ */
+export async function sendRefundToCrm(orderId: bigint, opts: SendOptions = {}): Promise<boolean> {
+  const url = opts.url ?? config.CRM_REFUND_WEBHOOK_URL;
+  if (!url) return false;
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        user: true,
+        // To'langan (2) yoki qaytarilgan (-2) tranzaksiya
+        transactions: { where: { state: { in: [TX_STATE.paid, TX_STATE.refunded] } }, orderBy: { id: "desc" }, take: 1 },
+      },
+    });
+    if (!order || !CRM_METHODS.includes(order.paymentMethod)) return false;
+    const payload = buildRefundPayload({
+      transactionId: crmTransactionId(order.paymentMethod, order.transactions[0]?.externalId ?? null, order.id),
+      orderId: order.id,
+      amount: order.amount,
+      telegramId: order.user.telegramId,
+    });
+    return (await postToCrmStatus(url, payload, "qaytarish", { orderId: orderId.toString(), transactionId: payload.transaction_id }, opts)).ok;
+  } catch (err) {
+    logger.error({ err, orderId: orderId.toString() }, "CRM: qaytarishni tayyorlashda xato");
     return false;
   }
 }

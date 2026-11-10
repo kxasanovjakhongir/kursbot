@@ -9,7 +9,7 @@ import { approveOrder, getOrderFull, rejectOrder, transition, type ReviewerRef }
 import { KickFailedError, revokeGrant } from "../../services/membership";
 import { grantAccess } from "../../services/access";
 import { trackEvent } from "../../services/events";
-import { sendPaymentToCrm } from "../../services/crmPayments";
+import { sendPaymentToCrm, sendRefundToCrm } from "../../services/crmPayments";
 import { displayCourseName, getSettings } from "../../services/settings";
 import { REJECT_REASONS, type RejectReasonCode } from "../../services/texts";
 import { label, translate } from "../../i18n";
@@ -207,6 +207,8 @@ export async function cancelAndNotify(api: Api, orderId: bigint, by: { panelUser
   // Chek tekshirilayotgan bo'lsa — guruhdagi kartochkadan tugmalar olinadi
   await syncCards(api, orderId);
   await trackEvent(order.userId, "order_cancelled", { orderId: orderId.toString(), by: "admin" });
+  // To'langan buyurtma bekor qilindi (pul qaytdi) — CRM'ga ham xabar (xato jarayonga ta'sir qilmaydi)
+  if (paid) void sendRefundToCrm(orderId);
 
   if (!order.user.isBanned) {
     const lang = await userLang(order.user);

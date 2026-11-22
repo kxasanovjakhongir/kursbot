@@ -59,10 +59,15 @@ function openUrl(method: number, username: string, start: string): string {
 }
 
 /**
- * Telefon uchun oraliq sahifa: tugmasiz, Telegramni darhol avtomatik ochadi. Faqat 2,5 soniyada ochilmasa
+ * Telefon uchun oraliq sahifa: tugmasiz, Telegramni avtomatik ochadi. Faqat 2,5 soniyada ochilmasa
  * (sahifa hali ko'rinib tursa) — kichik zaxira havola chiqadi, odam qotib qolmasin.
+ *
+ * Instagram/Facebook reklama sahifasini oldindan (yashirin) yuklab, bosilganda xotiradan ko'rsatadi. Yashirin
+ * paytdagi o'tishni brauzer bloklaydi va keyin kod yo'qoladi. Shuning uchun Telegram faqat sahifa haqiqatan
+ * ko'ringanda ochiladi (visibilitychange), xotiradan qayta ko'rsatilsa (pageshow) — qayta ochiladi. Odam Telegramdan
+ * qaytganda takror ochilmaydi — o'rniga zaxira havola ko'rinadi.
  */
-function openPage(username: string, code: string, method: number, nonce: string): string {
+export function openPage(username: string, code: string, method: number, nonce: string): string {
   const auto = openUrl(method, username, `${code}-m${method}`);
   const manual = openUrl(2, username, `${code}-m9`);
   return `<!doctype html><html lang="uz"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -71,8 +76,19 @@ body{margin:0;font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;bac
 main{max-width:340px;padding:24px 20px;text-align:center}p{color:#555;font-size:16px;line-height:1.45;margin:0}
 #alt{display:none;margin-top:18px;font-size:15px}#alt a{color:#2aabee;font-weight:600}
 </style></head><body><main><p>Telegram ochilmoqda…</p><p id="alt">Ochilmadimi? <a href="${manual}">Telegramda ochish</a></p></main>
-<script nonce="${nonce}">(function(){location.href=${JSON.stringify(auto)};
-setTimeout(function(){if(!document.hidden)document.getElementById("alt").style.display="block"},2500);})();</script></body></html>`;
+<script nonce="${nonce}">(function(){var u=${JSON.stringify(auto)},d=document,sent=0;
+function vis(){return d.visibilityState==="visible"}
+function alt(){if(vis())d.getElementById("alt").style.display="block"}
+function go(){if(sent||!vis())return;sent=1;location.href=u;setTimeout(alt,2500)}
+d.addEventListener("visibilitychange",function(){if(!vis())return;if(sent)alt();else go()});
+window.addEventListener("pageshow",function(e){if(e.persisted){sent=0;go()}});
+go();})();</script></body></html>`;
+}
+
+/** Brauzerning oldindan yuklash (prefetch/preview) so'rovi — odam hali bosmagan, bosish deb sanalmaydi */
+export function isPrefetch(headers: Record<string, string | string[] | undefined>): boolean {
+  const v = ["sec-purpose", "purpose", "x-purpose", "x-moz"].map((h) => String(headers[h] ?? "")).join(" ");
+  return /prefetch|preview|prerender/i.test(v);
 }
 
 /**
@@ -89,7 +105,7 @@ export function mountTrackingRedirect(app: Express, rt: BotRuntime): void {
     const raw = String(req.params.code).toLowerCase();
     const link = LINK_CODE_RE.test(raw) ? await prisma.campaignLink.findUnique({ where: { code: raw }, select: { id: true, code: true, isActive: true } }) : null;
 
-    if (link?.isActive) {
+    if (link?.isActive && !isPrefetch(req.headers)) {
       // Bosishni yozish yo'naltirishni kechiktirmaydi (xato bo'lsa ham foydalanuvchi botga o'tadi)
       void prisma.linkClick
         .create({ data: { linkId: link.id, visitorHash: visitorHash(req.ip ?? "", req.get("user-agent") ?? "") } })

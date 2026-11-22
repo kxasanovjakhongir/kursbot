@@ -8,7 +8,7 @@ import { createApp } from "../src/api/app";
 import { createBot } from "../src/bot/bot";
 import type { BotContext } from "../src/bot/context";
 import { resolveEntry } from "../src/services/campaignLinks";
-import { detectPlatform, pickMethod, servesOpenPage } from "../src/api/trackingRedirect";
+import { detectPlatform, isPrefetch, pickMethod, servesOpenPage } from "../src/api/trackingRedirect";
 import { createPanelUser } from "../src/services/panelUsers";
 import { addCard } from "../src/services/cards";
 import { invalidateSettings } from "../src/services/settings";
@@ -247,6 +247,9 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     expect(iosUrls.some((u) => iab.text.includes(u))).toBe(true);
     expect(iab.text).toContain(`https://t.me/test_bot?start=${link.code}-m9`); // zaxira havola
     expect(iab.text).not.toContain("<button");
+    // Yashirin (oldindan) yuklashda emas — sahifa ko'ringanda ochiladi; xotiradan qayta ko'rsatilsa ham
+    expect(iab.text).toContain("visibilitychange");
+    expect(iab.text).toContain("pageshow");
     expect(iab.headers["content-security-policy"]).toMatch(/script-src 'nonce-/);
     await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)"); // o'sha odam — unique emas
     // Kompyuter va Meta roboti — oddiy 302
@@ -399,6 +402,11 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     expect(detectPlatform(phones[3])).toBe("ios");
     expect([pickMethod("ios", () => 0), pickMethod("ios", () => 0.99)]).toEqual([1, 2]);
     expect([pickMethod("android", () => 0), pickMethod("android", () => 0.5), pickMethod("android", () => 0.99)]).toEqual([3, 1, 2]);
+    // Oldindan yuklash — bosish emas
+    expect(isPrefetch({ "sec-purpose": "prefetch" })).toBe(true);
+    expect(isPrefetch({ purpose: "prefetch" })).toBe(true);
+    expect(isPrefetch({ "x-purpose": "preview" })).toBe(true);
+    expect(isPrefetch({ "user-agent": "Instagram" })).toBe(false);
   });
 
   it("usul belgisi: /start <kod>-m<N> — o'sha darslik, link kirishi va ochish usuli yoziladi", async () => {

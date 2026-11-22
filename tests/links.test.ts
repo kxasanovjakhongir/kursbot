@@ -8,6 +8,7 @@ import { createApp } from "../src/api/app";
 import { createBot } from "../src/bot/bot";
 import type { BotContext } from "../src/bot/context";
 import { resolveEntry } from "../src/services/campaignLinks";
+import { detectPlatform, pickMethod, servesOpenPage } from "../src/api/trackingRedirect";
 import { createPanelUser } from "../src/services/panelUsers";
 import { addCard } from "../src/services/cards";
 import { invalidateSettings } from "../src/services/settings";
@@ -239,15 +240,17 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
   });
 
   it("tracking redirect /l/<kod>: bosish yoziladi, faqat botga yo'naltiriladi; noto'g'ri kod — oddiy bot", async () => {
-    // Instagram / Facebook ichki brauzeri: Telegram ilovasini start parametri bilan to'g'ridan-to'g'ri ochuvchi sahifa
-    const iab = await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0");
+    // Telefon (brauzer nomidan qat'i nazar) — tugmasiz sahifa, Telegram kod + usul belgisi bilan avtomatik ochiladi
+    const iab = await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)");
     expect(iab.status).toBe(200);
-    expect(iab.text).toContain(`tg://resolve?domain=test_bot&start=${link.code}`);
-    expect(iab.text).toContain(`intent://resolve?domain=test_bot&start=${link.code}`);
+    const iosUrls = [`"tg://resolve?domain=test_bot&start=${link.code}-m1"`, `"https://t.me/test_bot?start=${link.code}-m2"`];
+    expect(iosUrls.some((u) => iab.text.includes(u))).toBe(true);
+    expect(iab.text).toContain(`https://t.me/test_bot?start=${link.code}-m9`); // zaxira havola
+    expect(iab.text).not.toContain("<button");
     expect(iab.headers["content-security-policy"]).toMatch(/script-src 'nonce-/);
-    await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0"); // o'sha odam — unique emas
-    // Oddiy brauzer — t.me ga 302
-    const res = await request(app).get(`/l/${link.code.toUpperCase()}`).set("User-Agent", "TikTok 1.0");
+    await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)"); // o'sha odam — unique emas
+    // Kompyuter va Meta roboti — oddiy 302
+    const res = await request(app).get(`/l/${link.code.toUpperCase()}`).set("User-Agent", "facebookexternalhit/1.1");
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(`https://t.me/test_bot?start=${link.code}`);
     await new Promise((r) => setTimeout(r, 50));
@@ -378,4 +381,38 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     await bot.handleUpdate(cb("pi:yoq:about"));
     expect(calls.some((c) => c.method === "answerCallbackQuery")).toBe(true);
   });
+
+  it("telefon brauzerlari (nomidan qat'i nazar) sahifa oladi; robot va kompyuter — yo'q; usul platformaga mos", () => {
+    const phones = [
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36",
+      "Mozilla/5.0 (Linux; Android 13; SM-A515F Build/TP1A.220624.014; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0 Mobile Safari/537.36",
+      "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/27.0 Chrome/125.0 Mobile Safari/537.36",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/23G90 Instagram 400.0.0 (iPhone13,4; iOS 26_6_2)",
+      "Mozilla/5.0 (Linux; Android 11; CUBOT P50) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36",
+    ];
+    for (const ua of phones) expect(servesOpenPage(ua)).toBe(true);
+    for (const ua of ["facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)", "TelegramBot (like TwitterBot)", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0 Safari/537.36", ""]) {
+      expect(servesOpenPage(ua)).toBe(false);
+    }
+    expect(detectPlatform(phones[0])).toBe("android");
+    expect(detectPlatform(phones[3])).toBe("ios");
+    expect([pickMethod("ios", () => 0), pickMethod("ios", () => 0.99)]).toEqual([1, 2]);
+    expect([pickMethod("android", () => 0), pickMethod("android", () => 0.5), pickMethod("android", () => 0.99)]).toEqual([3, 1, 2]);
+  });
+
+  it("usul belgisi: /start <kod>-m<N> — o'sha darslik, link kirishi va ochish usuli yoziladi", async () => {
+    const user = await prisma.user.create({ data: { telegramId: 7012n, firstName: "Usul", phone: "+998901112299" } });
+    await bot.handleUpdate(start(`${link.code}-m2`, { id: 7012, first_name: "Usul" }));
+    expect(texts().join("\n")).toContain("Frontend Development");
+    expect(texts().join("\n")).not.toContain("eskirgan");
+    const u = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(u).toMatchObject({ lastLinkId: link.id, lastProduct: "fe" });
+    const ev = await prisma.event.findFirstOrThrow({ where: { userId: user.id, name: "start" } });
+    expect(ev.payload).toMatchObject({ link: link.code, method: 2 });
+    // Noma'lum kod + belgi — eskirgan havola
+    await bot.handleUpdate(start("yoqkod-m1", { id: 7012, first_name: "Usul" }));
+    expect(texts().join("\n")).toContain("noto'g'ri yoki eskirgan");
+  });
+
 });

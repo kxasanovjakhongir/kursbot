@@ -108,7 +108,9 @@ pm.command("start", async (ctx) => {
   const user = await recordStart(ctx.user!, product?.code ?? null, source);
   ctx.user = user;
   if (link) await recordLinkVisit(user, link, "bot", ctx.isNewUser);
-  await trackEvent(user.id, "start", { product: product?.code ?? null, source, link: link?.code ?? null, campaign: link?.campaign ?? null });
+  // method — tracking sahifasi Telegramni qaysi usul bilan ochgani (qaysi usul ishlashini o'lchash uchun)
+  const method = entry.kind === "product" ? (entry.method ?? null) : null;
+  await trackEvent(user.id, "start", { product: product?.code ?? null, source, link: link?.code ?? null, campaign: link?.campaign ?? null, method });
 
   if (product) {
     // Telefon bo'lmasa askPhone o'zi mahsulot nomi bilan salomlashadi

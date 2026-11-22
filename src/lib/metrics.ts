@@ -42,6 +42,14 @@ export const telegramApiCalls = new Counter({
 
 // ---------- HTTP ----------
 
+/** Reklama linki (/l/<kod>) qaysi yo'l bilan Telegramga yuborildi: platforma va ochish usuli */
+export const linkOpens = new Counter({
+  name: "link_open_total",
+  help: "Tracking link: Telegramni ochish usuli (platforma bo'yicha)",
+  labelNames: ["platform", "method"] as const,
+  registers: [registry],
+});
+
 export const httpRequests = new Counter({
   name: "http_requests_total",
   help: "HTTP so'rovlar",

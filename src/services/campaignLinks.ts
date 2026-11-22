@@ -31,8 +31,18 @@ export type LinkWithProduct = CampaignLink & { product: Product };
 
 export type Entry =
   | { kind: "none" }
-  | { kind: "product"; product: Product; source: string; link: LinkWithProduct | null }
+  | { kind: "product"; product: Product; source: string; link: LinkWithProduct | null; method?: number | null }
   | { kind: "unavailable" };
+
+/**
+ * Tracking sahifasi Telegramni qaysi usul bilan ochganini start kodining oxiriga qo'shadi: "<kod>-m<N>"
+ * (masalan "cbtqju9-m2"). Kod o'zgarmaydi — faqat qaysi usul ishlaganini o'lchash uchun.
+ */
+const METHOD_SUFFIX_RE = /^(.+)-m([1-9])$/;
+
+async function findLink(code: string): Promise<LinkWithProduct | null> {
+  return LINK_CODE_RE.test(code) ? prisma.campaignLink.findUnique({ where: { code }, include: { product: true } }) : null;
+}
 
 /**
  * start parametrini aniqlaydi. Parametrga ishonilmaydi: format tekshiriladi,
@@ -44,11 +54,16 @@ export async function resolveEntry(payload: string | null | undefined): Promise<
   if (raw.length > 64 || !/^[A-Za-z0-9_-]+$/.test(raw)) return { kind: "unavailable" };
 
   const code = raw.toLowerCase();
-  if (LINK_CODE_RE.test(code)) {
-    const link = await prisma.campaignLink.findUnique({ where: { code }, include: { product: true } });
-    if (link) {
-      return link.isActive && link.product.isActive ? { kind: "product", product: link.product, source: link.source, link } : { kind: "unavailable" };
-    }
+  // Avval aynan shu kod (o'z kodi "-m1" bilan tugaydigan link bo'lishi mumkin), keyin usul belgisisiz
+  let link = await findLink(code);
+  let method: number | null = null;
+  const suffix = link ? null : METHOD_SUFFIX_RE.exec(code);
+  if (suffix) {
+    link = await findLink(suffix[1]);
+    if (link) method = Number(suffix[2]);
+  }
+  if (link) {
+    return link.isActive && link.product.isActive ? { kind: "product", product: link.product, source: link.source, link, method } : { kind: "unavailable" };
   }
   // Eski format: <mahsulot>_<manba>
   const { productCode, source } = parseStartPayload(raw);

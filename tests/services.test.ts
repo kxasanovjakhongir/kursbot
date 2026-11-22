@@ -86,7 +86,7 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
   });
 
   it("syncOpenOrderPrices: narx o'zgarganda faqat to'lanmagan ochiq buyurtmalar yangilanadi", async () => {
-    const [a, b] = [await user(100n), await user(101n)];
+    const [a, b] = [await user(100n), await user(200n)];
     const p = await product("4b");
     const ra = await createOrder(a.id, p, null);
     const rb = await createOrder(b.id, p, null);

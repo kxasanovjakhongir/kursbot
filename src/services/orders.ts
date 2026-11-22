@@ -77,19 +77,30 @@ export async function listOpenOrders(userId: bigint) {
 }
 
 /**
- * Narx tushgan (chegirma) bo'lsa, hali to'lanmagan ochiq buyurtma yangi narxga tushiriladi — mijoz chegirmadan
- * oldin ochilgan buyurtmaning eski, qimmatroq summasini to'lamaydi. Narx oshsa, buyurtmadagi summa qoladi (BR-03).
+ * Hali to'lanmagan ochiq buyurtma mahsulotning joriy narxiga keltiriladi (narx oshsa ham, tushsa ham) —
+ * kurs kartochkasidagi narx va to'lovdagi summa hech qachon farq qilmaydi.
  * Chek yuborilgan, rad etilgan yoki onlayn to'lov boshlangan (kutilayotgan tranzaksiya) buyurtma o'zgarmaydi:
  * summa allaqachon ishlatilmoqda.
  */
-export async function applyPriceDrop<T extends Order>(order: T, product: Pick<Product, "price">): Promise<T> {
+export async function applyCurrentPrice<T extends Order>(order: T, product: Pick<Product, "price">): Promise<T> {
   const price = Math.round(product.price);
-  if (order.status !== "new" || price <= 0 || price >= order.amount) return order;
+  if (order.status !== "new" || price <= 0 || price === order.amount) return order;
   const res = await prisma.order.updateMany({
-    where: { id: order.id, status: "new", amount: { gt: price }, transactions: { none: { state: TX_STATE.pending } } },
+    where: { id: order.id, status: "new", amount: { not: price }, transactions: { none: { state: TX_STATE.pending } } },
     data: { amount: price },
   });
   return res.count === 1 ? { ...order, amount: price } : order;
+}
+
+/** Mahsulot narxi paneldan / buyruqdan o'zgarganda — shu mahsulotning barcha to'lanmagan ochiq buyurtmalari ham yangilanadi */
+export async function syncOpenOrderPrices(productId: number, price: number): Promise<number> {
+  const amount = Math.round(price);
+  if (amount <= 0) return 0;
+  const res = await prisma.order.updateMany({
+    where: { productId, status: "new", amount: { not: amount }, transactions: { none: { state: TX_STATE.pending } } },
+    data: { amount },
+  });
+  return res.count;
 }
 
 export type CreateOrderResult =
@@ -109,14 +120,14 @@ async function attributedLinkId(tx: Prisma.TransactionClient, userId: bigint): P
 }
 
 /**
- * "Darslikni olaman": yangi buyurtma, narx qotiriladi (narx tushsa — applyPriceDrop), karta tanlanadi, muddat 72 soat (TZ 5.4).
+ * "Darslikni olaman": yangi buyurtma, narx qotiriladi (ochiq buyurtma joriy narxga keltiriladi — applyCurrentPrice), karta tanlanadi, muddat 72 soat (TZ 5.4).
  * Faol karta bo'lmasa — faqat Payme / Click sozlangan bo'lsa yaratiladi (cardId = null).
  * Shu mahsulotga ochiq buyurtma bo'lsa — o'sha qaytariladi (BR-01).
  */
 export async function createOrder(userId: bigint, product: Product, source: string | null): Promise<CreateOrderResult> {
   await expireStaleOrders(userId);
   const existing = await findOpenOrder(userId, product.id);
-  if (existing) return { kind: "existing", order: await applyPriceDrop(existing, product) };
+  if (existing) return { kind: "existing", order: await applyCurrentPrice(existing, product) };
   if (product.price <= 0) return { kind: "no_price" };
 
   const settings = await getSettings();
@@ -142,7 +153,7 @@ export async function createOrder(userId: bigint, product: Product, source: stri
     // Ikki marta tez bosilganda qisman unique indeks (orders_one_open) ishlaydi
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       const order = await findOpenOrder(userId, product.id);
-      if (order) return { kind: "existing", order: await applyPriceDrop(order, product) };
+      if (order) return { kind: "existing", order: await applyCurrentPrice(order, product) };
     }
     throw err;
   }

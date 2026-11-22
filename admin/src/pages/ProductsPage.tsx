@@ -405,7 +405,7 @@ export default function ProductsPage() {
               <Textarea rows={4} maxLength={900} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Narx (so'm)" hint="Ochiq buyurtmalar eski narxda qoladi">
+              <Field label="Narx (so'm)" hint="To'lanmagan ochiq buyurtmalar ham yangi narxga o'tadi">
                 <Input inputMode="numeric" required value={form.price} onChange={(e) => setForm({ ...form, price: digits(e.target.value) })} placeholder="1250000" />
               </Field>
               <Field label="Eski narx (ixtiyoriy)" hint="Chegirmani ko'rsatish uchun">

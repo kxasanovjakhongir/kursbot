@@ -10,7 +10,7 @@ import { escapeHtml, formatShortDateTime, formatSum } from "../../lib/format";
 import { z } from "zod";
 import { SharedState } from "../../services/sharedState";
 import { prisma } from "../../db";
-import { pendingReceiptOrders } from "../../services/orders";
+import { pendingReceiptOrders, syncOpenOrderPrices } from "../../services/orders";
 import { addCard, deleteCard, setCardActive } from "../../services/cards";
 import { addAdmin, removeAdmin } from "../../services/admins";
 import { can, type Permission } from "../../services/permissions";
@@ -106,11 +106,13 @@ async function updateProduct(ctx: BotContext, code: string | undefined, data: Pr
   const p = await productOrFail(ctx, code);
   if (!p) return;
   const after = await prisma.product.update({ where: { id: p.id }, data });
+  // Narx o'zgarsa — to'lanmagan ochiq buyurtmalar ham yangi narxga o'tadi
+  if (after.price !== p.price) await syncOpenOrderPrices(p.id, after.price);
   await audit(ctx.admin!.id, "update", "product", p.id, p, after);
   await ctx.reply(`✅ ${p.code}: ${label} yangilandi.`);
 }
 
-// Narx o'zgarsa ochiq buyurtmalar eski narxda qoladi (BR-03) — chunki summa buyurtmaga qotirilgan
+// Narx o'zgarsa to'lanmagan ochiq buyurtmalar ham yangi narxga o'tadi (chek yuborilgan / onlayn to'lov boshlanganlari — yo'q)
 productManagers.command("setprice", async (ctx) => {
   const [code, sum] = args(ctx);
   const price = Number((sum ?? "").replace(/\D/g, ""));

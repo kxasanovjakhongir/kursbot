@@ -4,7 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../src/db";
 import { addAdmin, getAdmin } from "../src/services/admins";
 import { addCard } from "../src/services/cards";
-import { approveOrder, attachReceipt, createOrder, expireStaleOrders, rejectOrder } from "../src/services/orders";
+import { approveOrder, attachReceipt, createOrder, expireStaleOrders, rejectOrder, syncOpenOrderPrices } from "../src/services/orders";
 import { decideJoinRequest, grantAccess } from "../src/services/access";
 import { checkOwnership } from "../src/services/products";
 
@@ -75,14 +75,27 @@ describe.skipIf(!enabled)("servis qatlami (integratsion)", () => {
     expect(await prisma.order.count()).toBe(1);
   });
 
-  it("T-15 / BR-03: narx buyurtmada qotiriladi", async () => {
+  it("T-15: narx oshsa to'lanmagan ochiq buyurtma ham yangi narxga o'tadi (kartochka = to'lov)", async () => {
     const u = await user(100n);
     const r = await createOrder(u.id, await product("4b"), null);
     await prisma.product.update({ where: { code: "4b" }, data: { price: 2_000_000 } });
     const again = await createOrder(u.id, await product("4b"), null);
     expect(r.kind).toBe("created");
     expect(again.kind).toBe("existing");
-    expect("order" in again && again.order.amount).toBe(1_250_000);
+    expect("order" in again && again.order.amount).toBe(2_000_000);
+  });
+
+  it("syncOpenOrderPrices: narx o'zgarganda faqat to'lanmagan ochiq buyurtmalar yangilanadi", async () => {
+    const [a, b] = [await user(100n), await user(101n)];
+    const p = await product("4b");
+    const ra = await createOrder(a.id, p, null);
+    const rb = await createOrder(b.id, p, null);
+    if (ra.kind !== "created" || rb.kind !== "created") throw new Error();
+    await prisma.paymentTransaction.create({ data: { provider: "click", externalId: "s1", orderId: rb.order.id, amount: rb.order.amount } });
+    await prisma.product.update({ where: { id: p.id }, data: { price: 1_500_000 } });
+    expect(await syncOpenOrderPrices(p.id, 1_500_000)).toBe(1);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: ra.order.id } })).amount).toBe(1_500_000);
+    expect((await prisma.order.findUniqueOrThrow({ where: { id: rb.order.id } })).amount).toBe(1_250_000);
   });
 
   it("chegirma: narx tushsa ochiq buyurtma yangi narxga tushadi; chek yuborilgan yoki onlayn to'lov boshlangan buyurtma — yo'q", async () => {

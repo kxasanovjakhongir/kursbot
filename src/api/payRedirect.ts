@@ -7,7 +7,7 @@ import { returnUrl } from "../services/payments/common";
 import { parsePayRef, payProviderEnabled, type PayProvider } from "../services/payments/payLink";
 import { paymeCheckoutUrl } from "../services/payments/payme";
 import { userLang } from "../services/users";
-import { applyPriceDrop } from "../services/orders";
+import { applyCurrentPrice } from "../services/orders";
 import type { BotRuntime } from "./runtime";
 
 /**
@@ -27,7 +27,7 @@ export function mountPayRedirect(app: Express, rt: BotRuntime): void {
         : null;
     if (!found) return void res.status(404).type("text/plain").send("Havola noto'g'ri yoki eskirgan");
     // To'lov ekrani ochilgandan keyin chegirma qo'yilgan bo'lsa — yangi narx
-    const order = await applyPriceDrop(found, found.product);
+    const order = await applyCurrentPrice(found, found.product);
 
     const back = returnUrl((await botUsername(rt.api)) ?? undefined);
     res.setHeader("Cache-Control", "no-store");

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../../db";
 import { config } from "../../config";
 import { logActivity } from "../../services/activity";
+import { syncOpenOrderPrices } from "../../services/orders";
 import { getAdminGroupId } from "../../services/settings";
 import { currentUser } from "../auth";
 import { HttpError } from "../errors";
@@ -201,8 +202,9 @@ export function productsRouter(rt: BotRuntime): Router {
 
     const channelId = body.channelId === undefined ? undefined : await checkedChannel(rt, body.channelId);
 
-    // Narx o'zgarsa ochiq buyurtmalar eski narxda qoladi (BR-03)
     const updated = await prisma.product.update({ where: { id }, data: { ...body, channelId } });
+    // Narx o'zgarsa — to'lanmagan ochiq buyurtmalar ham yangi narxga o'tadi (kartochka va to'lov bir xil bo'lsin)
+    if (body.price !== undefined && body.price !== before.price) await syncOpenOrderPrices(id, updated.price);
     const changed = Object.keys(body).join(", ");
     await logActivity(currentUser(req).id, "UPDATE_PRODUCT", `${updated.title}: ${changed}`, clientIp(req));
     res.json(updated);

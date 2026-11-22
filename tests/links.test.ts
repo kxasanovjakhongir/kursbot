@@ -239,15 +239,21 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
   });
 
   it("tracking redirect /l/<kod>: bosish yoziladi, faqat botga yo'naltiriladi; noto'g'ri kod — oddiy bot", async () => {
-    const res = await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0");
+    const res = await request(app).get(`/l/${link.code}`).set("User-Agent", "Mozilla/5.0 Chrome/131");
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe(`https://t.me/test_bot?start=${link.code}`);
-    await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0"); // o'sha odam — unique emas
+    await request(app).get(`/l/${link.code}`).set("User-Agent", "Mozilla/5.0 Chrome/131"); // o'sha odam — unique emas
+    // Facebook / Instagram ichki brauzeri: Telegram ilovasini start parametri bilan to'g'ridan-to'g'ri ochuvchi sahifa
+    const iab = await request(app).get(`/l/${link.code}`).set("User-Agent", "Mozilla/5.0 Mobile [FB_IAB/FB4A;FBAV/490.0]");
+    expect(iab.status).toBe(200);
+    expect(iab.text).toContain(`tg://resolve?domain=test_bot&start=${link.code}`);
+    expect(iab.text).toContain(`intent://resolve?domain=test_bot&start=${link.code}`);
+    expect(iab.headers["content-security-policy"]).toMatch(/script-src 'nonce-/);
     await request(app).get(`/l/${link.code.toUpperCase()}`).set("User-Agent", "TikTok 1.0");
     await new Promise((r) => setTimeout(r, 50));
     const clicks = await prisma.linkClick.findMany({ where: { linkId: link.id } });
-    expect(clicks).toHaveLength(3);
-    expect(new Set(clicks.map((c) => c.visitorHash)).size).toBe(2);
+    expect(clicks).toHaveLength(4);
+    expect(new Set(clicks.map((c) => c.visitorHash)).size).toBe(3);
     expect(clicks[0].visitorHash).toMatch(/^[0-9a-f]{32}$/); // IP saqlanmaydi
 
     for (const bad of ["yoq-kod", "..%2F..%2Fetc", "https%3A%2F%2Fevil.com"]) {

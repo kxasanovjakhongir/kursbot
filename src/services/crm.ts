@@ -77,7 +77,7 @@ export async function postToCrmStatus(
   payload: object,
   what: string,
   logFields: Record<string, string>,
-  opts: Pick<SendOptions, "retryDelayMs" | "fetchImpl"> = {},
+  opts: Pick<SendOptions, "retryDelayMs" | "fetchImpl"> & { expected404?: boolean } = {},
 ): Promise<{ ok: boolean; status: number | null }> {
   const doFetch = opts.fetchImpl ?? fetch;
   const retryDelayMs = opts.retryDelayMs ?? 2000;
@@ -101,6 +101,11 @@ export async function postToCrmStatus(
         return { ok: true, status: res.status };
       }
       const text = (await res.text().catch(() => "")).slice(0, 300);
+      if (res.status === 404 && opts.expected404) {
+        // Kutilgan holat (chaqiruvchi o'zi hal qiladi) — panelda «Xato» bo'lib chiqmaydi
+        log.info({ status: res.status, response: text }, `CRM: ${what} — lid topilmadi, lid yuboriladi`);
+        return { ok: false, status: res.status };
+      }
       if (res.status < 500) {
         log.error({ status: res.status, response: text }, `CRM: ${what} rad etildi`);
         return { ok: false, status: res.status };
@@ -178,7 +183,8 @@ export async function sendCourseToCrm(user: LeadUser, courseTitle: string, opts:
   if (sentCourse.get(telegramId) === yonalish) return true;
   rememberCourse(telegramId, yonalish);
 
-  const res = await postToCrmStatus(url, { telegram_id: telegramId, yonalish }, "yo'nalish", { telegramId, yonalish }, opts);
+  // CRM'da lid yo'q (404, masalan CRM ulanishidan oldin ro'yxatdan o'tgan) — xato emas: lid shu yo'nalish bilan yuboriladi
+  const res = await postToCrmStatus(url, { telegram_id: telegramId, yonalish }, "yo'nalish", { telegramId, yonalish }, { ...opts, expected404: true });
   if (res.ok) return true;
   if (res.status === 404) {
     return sendLeadToCrm(user, { url: opts.leadUrl, fetchImpl: opts.fetchImpl, retryDelayMs: opts.retryDelayMs, yonalish });

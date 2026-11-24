@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "../src/db";
-import { buildLeadPayload, postToCrm, sendLeadToCrm } from "../src/services/crm";
+import { buildLeadPayload, crmCourseName, postToCrm, resetCrmCourseCache, sendCourseToCrm, sendLeadToCrm } from "../src/services/crm";
 import { buildPaymentPayload, buildRefundPayload, crmTransactionId, sendPaymentToCrm, sendRefundToCrm } from "../src/services/crmPayments";
 
 const user = {
@@ -204,5 +204,64 @@ describe("CRM qaytarish (refund)", () => {
     expect(await sendRefundToCrm(9n, { url: URL + "/refund", fetchImpl })).toBe(false);
     expect(fetchImpl).not.toHaveBeenCalled();
     spy.mockRestore();
+  });
+});
+
+describe("CRM yo'nalish (qaysi kurs orqali kelgan)", () => {
+  beforeEach(() => resetCrmCourseCache());
+
+  it("kurs nomidan yo'nalish", () => {
+    expect(crmCourseName("1. Kompaniyani 4 bosqichda boshqarish")).toBe("4 bosqichli boshqaruv");
+    expect(crmCourseName("2. Kompaniyani ichki qonun qoidalari")).toBe("Qonun qoidalar");
+    expect(crmCourseName("3) Sotuv bo'limi")).toBe("Sotuv bo'limi");
+  });
+
+  it("lid JSON'ida yonalish; noma'lum bo'lsa maydon yo'q", () => {
+    expect(buildLeadPayload(user, "Qonun qoidalar")).toMatchObject({ telegram_id: "123456789", yonalish: "Qonun qoidalar" });
+    expect(buildLeadPayload(user)).not.toHaveProperty("yonalish");
+    expect(buildLeadPayload(user, null)).not.toHaveProperty("yonalish");
+  });
+
+  it("sendLeadToCrm yonalish bilan — manzil o'zgarmaydi", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(res(200));
+    expect(await sendLeadToCrm(user, { url: URL, fetchImpl, yonalish: "4 bosqichli boshqaruv" })).toBe(true);
+    expect(fetchImpl.mock.calls[0][0]).toBe(URL);
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toMatchObject({ phone: "+998901234567", yonalish: "4 bosqichli boshqaruv" });
+  });
+
+  it("lid yuborilgandan keyin tanlangan yo'nalish /course ga; o'sha yo'nalish qayta yuborilmaydi", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(res(200));
+    expect(await sendCourseToCrm(user, "2. Kompaniyani ichki qonun qoidalari", { url: URL + "/course", fetchImpl })).toBe(true);
+    expect(fetchImpl.mock.calls[0][0]).toBe(URL + "/course");
+    expect(JSON.parse(fetchImpl.mock.calls[0][1].body)).toEqual({ telegram_id: "123456789", yonalish: "Qonun qoidalar" });
+    await sendCourseToCrm(user, "2. Kompaniyani ichki qonun qoidalari", { url: URL + "/course", fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    await sendCourseToCrm(user, "1. Kompaniyani 4 bosqichda boshqarish", { url: URL + "/course", fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body).yonalish).toBe("4 bosqichli boshqaruv");
+  });
+
+  it("lid bilan yuborilgan yo'nalish /course ga takrorlanmaydi", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(res(200));
+    await sendLeadToCrm(user, { url: URL, fetchImpl, yonalish: "Qonun qoidalar" });
+    await sendCourseToCrm(user, "2. Kompaniyani ichki qonun qoidalari", { url: URL + "/course", fetchImpl });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("CRM lidni topmasa (404) — lid shu yo'nalish bilan yuboriladi", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(res(404)).mockResolvedValueOnce(res(200));
+    expect(await sendCourseToCrm(user, "1. Kompaniyani 4 bosqichda boshqarish", { url: URL + "/course", leadUrl: URL, fetchImpl, retryDelayMs: 0 })).toBe(true);
+    expect(fetchImpl.mock.calls[1][0]).toBe(URL);
+    expect(JSON.parse(fetchImpl.mock.calls[1][1].body)).toMatchObject({ phone: "+998901234567", yonalish: "4 bosqichli boshqaruv" });
+  });
+
+  it("yuborilmasa keyingi safar qayta uriniladi; telefonsiz — yuborilmaydi", async () => {
+    const fetchImpl = vi.fn().mockResolvedValueOnce(res(400)).mockResolvedValueOnce(res(200));
+    expect(await sendCourseToCrm(user, "Qonun", { url: URL + "/course", fetchImpl })).toBe(false);
+    expect(await sendCourseToCrm(user, "Qonun", { url: URL + "/course", fetchImpl })).toBe(true);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const none = vi.fn();
+    expect(await sendCourseToCrm({ ...user, phone: null }, "Qonun", { url: URL + "/course", fetchImpl: none })).toBe(false);
+    expect(none).not.toHaveBeenCalled();
   });
 });

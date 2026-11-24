@@ -18,7 +18,7 @@ import { applyCurrentPrice, cancelOrder, createOrder } from "../../services/orde
 import { rememberPaymentScreen } from "../lastPayment";
 import { refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
-import { sendLeadToCrm } from "../../services/crm";
+import { crmCourseName, sendCourseToCrm, sendLeadToCrm } from "../../services/crm";
 import { displayCourseName, getSettings, getSupportUrl } from "../../services/settings";
 import { prisma } from "../../db";
 
@@ -44,6 +44,8 @@ async function askPhone(ctx: BotContext, product: Product | null): Promise<void>
 async function presentProduct(ctx: BotContext, product: Product): Promise<void> {
   const user = ctx.user!;
   await setLastProduct(user, product.code);
+  // Ro'yxatdan o'tgan (lidi CRM'da bor) mijoz yo'nalishni tanladi — CRM'ga (o'sha yo'nalish qayta yuborilmaydi)
+  if (user.phone) void sendCourseToCrm(user, product.title);
 
   const own = await checkOwnership(user.id, product);
   if (own.kind === "owned") {
@@ -151,8 +153,9 @@ pm.on("message:contact", async (ctx) => {
   const user = await setPhone(ctx.user!.id, phone, isForeign);
   ctx.user = user;
   await trackEvent(user.id, "phone", { foreign: isForeign, update: hadPhone });
-  // CRM'ga lid (fon rejimida — CRM sekin yoki ishlamasa ham foydalanuvchi kutmaydi)
-  void sendLeadToCrm(user);
+  // CRM'ga lid (fon rejimida — CRM sekin yoki ishlamasa ham foydalanuvchi kutmaydi), qaysi kurs orqali kelgani bilan
+  const product = await getActiveProduct(user.lastProduct);
+  void sendLeadToCrm(user, { yonalish: product ? crmCourseName(product.title) : null });
 
   // Profildan raqamni yangilash
   if (hadPhone) {
@@ -161,7 +164,6 @@ pm.on("message:contact", async (ctx) => {
     return;
   }
   await ctx.reply(await ctx.t("phone_saved"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
-  const product = await getActiveProduct(user.lastProduct);
   if (product) await presentProduct(ctx, product);
   else await showCatalog(ctx);
 });

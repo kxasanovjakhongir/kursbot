@@ -1,5 +1,6 @@
 import type { User } from "@prisma/client";
 import { config } from "../config";
+import { prisma } from "../db";
 import { logger } from "../lib/logger";
 
 /**
@@ -16,9 +17,26 @@ export interface CrmLeadPayload {
   phone: string;
   telegram_id: string;
   telegram_username: string;
+  /** Mijoz kelgan / tanlagan yo'nalish (kurs). Noma'lum bo'lsa maydon yuborilmaydi */
+  yonalish?: string;
 }
 
-export function buildLeadPayload(user: Pick<User, "telegramId" | "firstName" | "lastName" | "username" | "phone">): CrmLeadPayload | null {
+/**
+ * CRM'dagi yo'nalish nomi: kurs nomidan. "1. Kompaniyani 4 bosqichda boshqarish" → "4 bosqichli boshqaruv",
+ * "2. Kompaniyani ichki qonun qoidalari" → "Qonun qoidalar"; boshqa kurs — raqamsiz o'z nomi.
+ */
+export function crmCourseName(title: string): string {
+  const name = title.replace(/^\s*\d+\s*[.)]\s*/, "").trim();
+  if (/qonun/i.test(name)) return "Qonun qoidalar";
+  const stages = /(\d+)\s*bosqich/i.exec(name);
+  if (stages) return `${stages[1]} bosqichli boshqaruv`;
+  return name;
+}
+
+export function buildLeadPayload(
+  user: Pick<User, "telegramId" | "firstName" | "lastName" | "username" | "phone">,
+  yonalish?: string | null,
+): CrmLeadPayload | null {
   if (!user.phone) return null;
   return {
     first_name: user.firstName ?? "",
@@ -26,6 +44,7 @@ export function buildLeadPayload(user: Pick<User, "telegramId" | "firstName" | "
     phone: user.phone.startsWith("+") ? user.phone : `+${user.phone}`,
     telegram_id: user.telegramId.toString(),
     telegram_username: user.username ?? "",
+    ...(yonalish ? { yonalish } : {}),
   };
 }
 
@@ -96,14 +115,75 @@ export async function postToCrmStatus(
   return { ok: false, status: null };
 }
 
-/** true — CRM qabul qildi; false — yuborilmadi (o'chiq, telefon yo'q yoki barcha urinishlar xato) */
-export async function sendLeadToCrm(
-  user: Pick<User, "id" | "telegramId" | "firstName" | "lastName" | "username" | "phone">,
-  opts: SendOptions = {},
-): Promise<boolean> {
+/**
+ * CRM'ga oxirgi yuborilgan yo'nalish (Telegram ID → yo'nalish): bir xil yo'nalish qayta-qayta yuborilmaydi.
+ * Jarayon xotirasida; qayta ishga tushgandan keyin ko'pi bilan bir marta takrorlanadi (CRM uchun zararsiz).
+ */
+const sentCourse = new Map<string, string>();
+const SENT_COURSE_MAX = 20_000;
+
+function rememberCourse(telegramId: string, yonalish: string | null | undefined): void {
+  if (!yonalish) return;
+  sentCourse.delete(telegramId);
+  sentCourse.set(telegramId, yonalish);
+  if (sentCourse.size > SENT_COURSE_MAX) sentCourse.delete(sentCourse.keys().next().value as string);
+}
+
+/** Testlar uchun */
+export function resetCrmCourseCache(): void {
+  sentCourse.clear();
+}
+
+/** Foydalanuvchining oxirgi kursi (lastProduct) bo'yicha yo'nalish */
+async function courseOfUser(user: { lastProduct?: string | null }): Promise<string | null> {
+  if (!user.lastProduct) return null;
+  const product = await prisma.product.findUnique({ where: { code: user.lastProduct }, select: { title: true } }).catch(() => null);
+  return product ? crmCourseName(product.title) : null;
+}
+
+type LeadUser = Pick<User, "id" | "telegramId" | "firstName" | "lastName" | "username" | "phone"> & { lastProduct?: string | null };
+
+/**
+ * true — CRM qabul qildi; false — yuborilmadi (o'chiq, telefon yo'q yoki barcha urinishlar xato).
+ * yonalish berilmasa — foydalanuvchining oxirgi kursidan (lastProduct) olinadi.
+ */
+export async function sendLeadToCrm(user: LeadUser, opts: SendOptions & { yonalish?: string | null } = {}): Promise<boolean> {
   const url = opts.url ?? config.CRM_WEBHOOK_URL;
-  if (!url) return false;
-  const payload = buildLeadPayload(user);
+  if (!url || !user.phone) return false;
+  const telegramId = user.telegramId.toString();
+  // Yo'nalish oldindan ma'lum bo'lsa — darhol eslab qolinadi (keyingi /course so'rovi takrorlanmasin)
+  if (opts.yonalish !== undefined) rememberCourse(telegramId, opts.yonalish);
+  const yonalish = opts.yonalish !== undefined ? opts.yonalish : await courseOfUser(user);
+  rememberCourse(telegramId, yonalish);
+  const payload = buildLeadPayload(user, yonalish);
   if (!payload) return false;
-  return postToCrm(url, payload, "lid", { telegramId: payload.telegram_id }, opts);
+  return postToCrm(url, payload, "lid", { telegramId }, opts);
+}
+
+export function courseWebhookUrl(): string | undefined {
+  if (config.CRM_COURSE_WEBHOOK_URL) return config.CRM_COURSE_WEBHOOK_URL;
+  return config.CRM_WEBHOOK_URL ? `${config.CRM_WEBHOOK_URL.replace(/\/+$/, "")}/course` : undefined;
+}
+
+/**
+ * Lid yuborilgandan keyin mijoz yo'nalishni (kursni) tanlasa: { telegram_id, yonalish } CRM'ga.
+ * Faqat telefoni bor (lidi CRM'da bor) mijoz uchun; o'sha yo'nalish allaqachon yuborilgan bo'lsa — yuborilmaydi.
+ * CRM lidni topmasa (404) — lid shu yo'nalish bilan yuboriladi.
+ */
+export async function sendCourseToCrm(user: LeadUser, courseTitle: string, opts: SendOptions & { leadUrl?: string } = {}): Promise<boolean> {
+  const url = opts.url ?? courseWebhookUrl();
+  if (!url || !user.phone) return false;
+  const telegramId = user.telegramId.toString();
+  const yonalish = crmCourseName(courseTitle);
+  if (sentCourse.get(telegramId) === yonalish) return true;
+  rememberCourse(telegramId, yonalish);
+
+  const res = await postToCrmStatus(url, { telegram_id: telegramId, yonalish }, "yo'nalish", { telegramId, yonalish }, opts);
+  if (res.ok) return true;
+  if (res.status === 404) {
+    return sendLeadToCrm(user, { url: opts.leadUrl, fetchImpl: opts.fetchImpl, retryDelayMs: opts.retryDelayMs, yonalish });
+  }
+  // Yuborilmadi — keyingi safar qayta urinish uchun unutiladi
+  if (sentCourse.get(telegramId) === yonalish) sentCourse.delete(telegramId);
+  return false;
 }

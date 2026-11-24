@@ -2,7 +2,7 @@ import type { PaymentMethod } from "@prisma/client";
 import { config } from "../config";
 import { prisma } from "../db";
 import { logger } from "../lib/logger";
-import { postToCrmStatus, sendLeadToCrm, type SendOptions } from "./crm";
+import { crmCourseName, postToCrmStatus, sendLeadToCrm, type SendOptions } from "./crm";
 import { TX_STATE } from "./payments/common";
 
 /**
@@ -79,7 +79,10 @@ export async function sendPaymentToCrm(orderId: bigint, opts: SendOptions & { le
     if (first.ok) return true;
     // CRM to'lovni faqat lid bor bo'lsa qabul qiladi (404). Telefon CRM ulanishidan oldin ulashilgan yoki lid yuborilmagan
     // bo'lishi mumkin: avval lid yuboriladi, keyin to'lov qayta yuboriladi
-    if (first.status === 404 && (await sendLeadToCrm(order.user, { url: opts.leadUrl, fetchImpl: opts.fetchImpl, retryDelayMs: opts.retryDelayMs }))) {
+    if (
+      first.status === 404 &&
+      (await sendLeadToCrm(order.user, { url: opts.leadUrl, fetchImpl: opts.fetchImpl, retryDelayMs: opts.retryDelayMs, yonalish: crmCourseName(order.product.title) }))
+    ) {
       return (await postToCrmStatus(url, payload, "to'lov (lid yuborilgach)", fields, opts)).ok;
     }
     return false;

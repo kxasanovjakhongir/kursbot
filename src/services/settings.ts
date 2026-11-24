@@ -29,6 +29,8 @@ export const DEFAULT_SETTINGS = {
   button_states: {} as Record<string, boolean>,
   // Tugma ranglari: faqat standartdan farq qiladiganlari ("none" — rangsiz). services/buttons.ts
   button_colors: {} as Record<string, string>,
+  // Bot mijozlarga yuboradigan aloqa raqami (eslatmalarda «qo'ng'iroq qiling»). Paneldan kiritiladi
+  support_phone: null as string | null,
   support_username: (config.SUPPORT_USERNAME ? normalizeTelegramUsername(config.SUPPORT_USERNAME) : null) as string | null,
 };
 
@@ -95,6 +97,20 @@ export async function getSupportUrl(): Promise<string | null> {
   const raw = (await getSettings()).support_username;
   const username = typeof raw === "string" ? normalizeTelegramUsername(raw) : null;
   return username ? `https://t.me/${username}` : null;
+}
+
+/** Aloqa raqami (panel → Sozlamalar → «Bot yuboradigan raqam»). Sozlanmagan bo'lsa null */
+export async function getSupportPhone(): Promise<string | null> {
+  const raw = (await getSettings()).support_phone;
+  return typeof raw === "string" && raw.trim() ? raw.trim() : null;
+}
+
+/** "+998 90 123-45-67", "(90) 1234567" — 7–15 raqam; bo'sh joy, tire, qavs ruxsat */
+export function normalizeSupportPhone(v: string): string | null {
+  const s = v.trim().replace(/\s+/g, " ");
+  if (!/^\+?[\d\s()-]+$/.test(s)) return null;
+  const digits = s.replace(/\D/g, "").length;
+  return digits >= 7 && digits <= 15 ? s : null;
 }
 
 export const COURSE_NAME_MAX_LENGTH_LIMIT = 100;

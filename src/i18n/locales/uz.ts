@@ -203,14 +203,16 @@ export const uz = {
   reminder_phone_generic:
     "👋 {ism}, darsliklarni ko'rish uchun pastdagi «📱 Raqamni yuborish» tugmasini bosing 👇",
   reminder_upsell:
-    "{ism}, <b>{mahsulot}</b> darsligi videosini ko'rdingizmi? 🙂\n\nDarslikni olish uchun «✅ Darslikni olaman» tugmasini bosing.",
+    "{ism}, <b>{mahsulot}</b> darsligi videosini ko'rdingiz 🙂\n\nQanday savolingiz bor? Bemalol qo'ng'iroq qiling yoki Telegramda yozing — hammasiga javob beramiz.\n\nDarslikni olish uchun «✅ Darslikni olaman» tugmasini bosing.",
   reminder_pay_1:
     "🧾 {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz ochiq — to'lov hali qilinmagan.\n\nTo'lov ma'lumotlarini ko'rish uchun pastdagi tugmani bosing 👇",
   reminder_pay_2:
     "⏳ {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz hali to'lanmagan.\n\nTo'lovni qilsangiz, darslarga darhol kirasiz 👇",
   reminder_pay_3:
     "⚠️ {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz muddati <b>{vaqt}</b> da tugaydi.\n\nUlgurish uchun pastdagi tugma orqali to'lovni qiling 👇",
-  reminder_support: "❓ Savolingiz bo'lsa, adminga yozing: {kontakt}",
+  reminder_support: "❓ Savolingiz bo'lsa, bog'laning:",
+  reminder_support_phone: "📞 Telefon: {telefon}",
+  reminder_support_telegram: "💬 Telegram: {kontakt}",
   btn_reminder_pay: "💳 To'lovga o'tish",
   btn_reminder_video: "🎥 Videoni qayta ko'rish",
 };

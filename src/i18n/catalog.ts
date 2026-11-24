@@ -226,7 +226,9 @@ export const TEXT_GROUPS: TextGroup[] = [
       reminder_pay_1: { title: "To'lamagan — 1-eslatma (1 soatdan keyin)" },
       reminder_pay_2: { title: "To'lamagan — 2-eslatma (~1 kundan keyin)" },
       reminder_pay_3: { title: "To'lamagan — muddati tugashidan oldin", hint: "{vaqt} — buyurtma tugash vaqti" },
-      reminder_support: { title: "Har bir eslatma oxiridagi admin qatori", format: "part", hint: "{kontakt} — sozlamalardagi admin (support) username" },
+      reminder_support: { title: "Eslatma oxiri — sarlavha", format: "part", hint: "Ostida telefon va Telegram qatorlari chiqadi («darslikni oling» eslatmasida sarlavhasiz)" },
+      reminder_support_phone: { title: "Eslatma oxiri — telefon", format: "part", hint: "{telefon} — Sozlamalar → «Bot yuboradigan raqam». Kiritilmagan bo'lsa chiqmaydi" },
+      reminder_support_telegram: { title: "Eslatma oxiri — Telegram", format: "part", hint: "{kontakt} — sozlamalardagi yordam username" },
     },
   },
   {

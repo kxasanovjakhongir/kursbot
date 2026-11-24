@@ -169,8 +169,8 @@ export default function BotSettingsPage() {
 
               <Section
                 icon={LifeBuoy}
-                title="Telegram yordam"
-                description="«💬 Yordam» va «Admin bilan bog'lanish» tugmalari ochadigan profil"
+                title="Yordam: Telegram va telefon"
+                description="«💬 Yordam» va «Admin bilan bog'lanish» tugmalari ochadigan profil hamda bot yuboradigan raqam"
                 saving={saving === "support"}
                 onSubmit={submit(
                   "support",
@@ -181,7 +181,7 @@ export default function BotSettingsPage() {
                       setSupportError("Telegram username noto'g'ri formatda.");
                       return null;
                     }
-                    return { supportUsername: username };
+                    return { supportUsername: username, supportPhone: form.supportPhone.trim() };
                   },
                   (body) => setSupport(body.supportUsername ? `@${body.supportUsername}` : ""),
                 )}
@@ -197,6 +197,16 @@ export default function BotSettingsPage() {
                       setSupport(e.target.value);
                       setSupportError(undefined);
                     }}
+                  />
+                </Field>
+                <Field label="Bot yuboradigan raqam" hint="Eslatmalarda «Savolingiz bo'lsa, qo'ng'iroq qiling» deb shu raqam yuboriladi. Bo'sh bo'lsa — faqat Telegram profil.">
+                  <Input
+                    placeholder="+998 90 123 45 67"
+                    maxLength={32}
+                    inputMode="tel"
+                    autoComplete="off"
+                    value={form.supportPhone}
+                    onChange={(e) => setForm({ ...form, supportPhone: e.target.value })}
                   />
                 </Field>
                 {!form.supportUsername && <p className="text-xs text-amber-700">Hozircha sozlanmagan — bot «Yordam xizmati hozircha sozlanmagan» deb javob beradi.</p>}

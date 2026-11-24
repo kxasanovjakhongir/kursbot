@@ -177,11 +177,14 @@ export const ru: Messages = {
   reminder_phone_2:
     "⏳ {ism}, видео курса <b>{mahsulot}</b> ждёт вас.\n\nНажмите кнопку «📱 Отправить номер» ниже — видео придёт сразу 👇",
   reminder_phone_generic: "👋 {ism}, чтобы посмотреть курсы, нажмите кнопку «📱 Отправить номер» ниже 👇",
-  reminder_upsell: "{ism}, вы посмотрели видео курса <b>{mahsulot}</b>? 🙂\n\nЧтобы получить курс, нажмите «✅ Купить учебник».",
+  reminder_upsell:
+    "{ism}, вы посмотрели видео курса <b>{mahsulot}</b> 🙂\n\nЕсть вопросы? Позвоните или напишите в Telegram — ответим на все.\n\nЧтобы получить курс, нажмите «✅ Купить учебник».",
   reminder_pay_1: "🧾 {ism}, ваш заказ курса <b>{mahsulot}</b> открыт — оплата ещё не поступила.\n\nНажмите кнопку ниже, чтобы увидеть реквизиты 👇",
   reminder_pay_2: "⏳ {ism}, заказ курса <b>{mahsulot}</b> ещё не оплачен.\n\nПосле оплаты вы сразу получите доступ к урокам 👇",
   reminder_pay_3: "⚠️ {ism}, срок заказа курса <b>{mahsulot}</b> истекает <b>{vaqt}</b>.\n\nОплатите по кнопке ниже, чтобы успеть 👇",
-  reminder_support: "❓ Если есть вопросы, напишите админу: {kontakt}",
+  reminder_support: "❓ Если есть вопросы, свяжитесь с нами:",
+  reminder_support_phone: "📞 Телефон: {telefon}",
+  reminder_support_telegram: "💬 Telegram: {kontakt}",
   btn_reminder_pay: "💳 Перейти к оплате",
   btn_reminder_video: "🎥 Посмотреть видео снова",
 };

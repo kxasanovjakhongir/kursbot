@@ -190,6 +190,8 @@ export interface BotSettings {
   workEnd: string;
   /** "Yordam" tugmasi yo'naltiradigan username (@ siz); bo'sh — sozlanmagan */
   supportUsername: string;
+  /** Bot mijozlarga yuboradigan aloqa raqami (eslatmalarda); bo'sh — sozlanmagan */
+  supportPhone: string;
   /** Kurs nomining botda ko'rinadigan maksimal belgilar soni (1–100) */
   courseNameMaxLength: number;
 }

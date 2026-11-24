@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Api } from "grammy";
 import { prisma } from "../src/db";
-import { invalidateSettings } from "../src/services/settings";
+import { invalidateSettings, normalizeSupportPhone } from "../src/services/settings";
 import { isReminderHour, nextPayReminder, processReminders, REMINDER_RULES } from "../src/services/reminders";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
@@ -38,6 +38,17 @@ describe("eslatmalar: vaqt va to'lov eslatmasi navbati", () => {
   });
 });
 
+describe("bot yuboradigan raqam (sozlamalar)", () => {
+  it("odatiy yozuvlar qabul qilinadi, noto'g'risi — yo'q", () => {
+    expect(normalizeSupportPhone("  +998 90   123 45 67 ")).toBe("+998 90 123 45 67");
+    expect(normalizeSupportPhone("(90) 123-45-67")).toBe("(90) 123-45-67");
+    expect(normalizeSupportPhone("998901234567")).toBe("998901234567");
+    expect(normalizeSupportPhone("12345")).toBeNull();
+    expect(normalizeSupportPhone("+998 90 abc")).toBeNull();
+    expect(normalizeSupportPhone("<b>+998901234567</b>")).toBeNull();
+  });
+});
+
 interface Sent {
   chatId: number;
   text: string;
@@ -60,6 +71,7 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
   beforeAll(async () => {
     await prisma.$executeRawUnsafe(`TRUNCATE reminders, orders, products, users RESTART IDENTITY CASCADE`);
     await prisma.setting.upsert({ where: { key: "support_username" }, create: { key: "support_username", value: "verda_admin" }, update: { value: "verda_admin" } });
+    await prisma.setting.upsert({ where: { key: "support_phone" }, create: { key: "support_phone", value: "+998 90 123 45 67" }, update: { value: "+998 90 123 45 67" } });
     invalidateSettings();
     const [fourStep, rules] = await Promise.all([
       prisma.product.create({ data: { code: "r4", title: "1. Kompaniyani 4 bosqichda boshqarish", price: 100 } }),
@@ -72,7 +84,8 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
     const payer = await user(9004n, { phone: "+998901112244", lastProduct: "rq", lastSeenAt: at(-2 * HOUR) });
     await user(9005n, { lastProduct: "r4", lastSeenAt: at(-20 * 24 * HOUR) }); // juda eski
     await user(9008n, { lastProduct: "r4", lastSeenAt: at(-30 * HOUR) }); // kecha kirgan (eski odam) — bitta eslatma
-    await user(9009n, { lastProduct: "r4", lastSeenAt: at(-3 * 24 * HOUR) }); // 2 kundan oldin
+    await user(9009n, { lastProduct: "r4", lastSeenAt: at(-8 * 24 * HOUR) }); // bir haftadan ko'p botga kirmagan
+    await user(9010n, { lastProduct: "r4", lastSeenAt: at(-2 * HOUR), createdAt: new Date("2026-11-20T10:00:00Z") }); // sotuvdan oldin (o'zimizning odam)
     await user(9006n, { lastProduct: "r4", lastSeenAt: at(-2 * HOUR), isBlocked: true });
     await user(9007n, { lastProduct: "r4", lastSeenAt: at(-2 * HOUR), newsEnabled: false });
     const order = await prisma.order.create({
@@ -86,7 +99,7 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
   });
 
   afterAll(async () => {
-    await prisma.setting.deleteMany({ where: { key: "support_username" } });
+    await prisma.setting.deleteMany({ where: { key: { in: ["support_username", "support_phone"] } } });
     invalidateSettings();
   });
 
@@ -102,10 +115,14 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
     const [phone] = to(9001);
     expect(phone.text).toContain("qonun qoidalari");
     expect(phone.text).toContain("@verda_admin");
+    expect(phone.text).toContain("+998 90 123 45 67");
+    expect(phone.text).toContain("Savolingiz bo'lsa");
     expect(json(phone.markup)).toContain("request_contact");
 
     const [upsell] = to(9003);
     expect(upsell.text).toContain("4 bosqichda");
+    expect(upsell.text).toContain("Qanday savolingiz bor");
+    expect(upsell.text).toContain("+998 90 123 45 67");
     expect(json(upsell.markup)).toContain('"buy:r4"');
     expect(json(upsell.markup)).toContain("https://t.me/verda_admin");
 
@@ -121,7 +138,7 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
     expect(await processReminders(fakeApi, next)).toEqual({ pay: 1, phone: 2, upsell: 0 });
     expect(to(9001)).toHaveLength(2);
     expect(to(9002)).toHaveLength(1);
-    expect(to(9005).length + to(9006).length + to(9007).length + to(9009).length).toBe(0);
+    expect(to(9005).length + to(9006).length + to(9007).length + to(9009).length + to(9010).length).toBe(0);
     expect(to(9008)).toHaveLength(1); // eski odam — faqat bitta eslatma
     expect(to(9003)).toHaveLength(1); // «darslikni oling» — bir marta
     expect(await prisma.reminder.count({ where: { sentAt: { not: null } } })).toBe(7);

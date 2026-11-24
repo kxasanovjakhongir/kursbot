@@ -177,11 +177,14 @@ export const en: Messages = {
     "👋 {ism}, you chose the <b>{mahsulot}</b> course but haven't watched the intro video yet.\n\n🎥 Tap «📱 Share phone number» below — the video will arrive right away 👇",
   reminder_phone_2: "⏳ {ism}, the <b>{mahsulot}</b> video is waiting for you.\n\nTap «📱 Share phone number» below — the video will arrive right away 👇",
   reminder_phone_generic: "👋 {ism}, to see the courses, tap «📱 Share phone number» below 👇",
-  reminder_upsell: "{ism}, did you watch the <b>{mahsulot}</b> video? 🙂\n\nTo get the course, tap «✅ Get this textbook».",
+  reminder_upsell:
+    "{ism}, you watched the <b>{mahsulot}</b> video 🙂\n\nAny questions? Call us or write on Telegram — we'll answer them all.\n\nTo get the course, tap «✅ Get this textbook».",
   reminder_pay_1: "🧾 {ism}, your <b>{mahsulot}</b> order is open — payment hasn't been made yet.\n\nTap the button below to see the payment details 👇",
   reminder_pay_2: "⏳ {ism}, your <b>{mahsulot}</b> order is still unpaid.\n\nOnce you pay, you get access to the lessons right away 👇",
   reminder_pay_3: "⚠️ {ism}, your <b>{mahsulot}</b> order expires at <b>{vaqt}</b>.\n\nPay with the button below to make it in time 👇",
-  reminder_support: "❓ Questions? Write to the admin: {kontakt}",
+  reminder_support: "❓ Questions? Contact us:",
+  reminder_support_phone: "📞 Phone: {telefon}",
+  reminder_support_telegram: "💬 Telegram: {kontakt}",
   btn_reminder_pay: "💳 Go to payment",
   btn_reminder_video: "🎥 Watch the video again",
 };

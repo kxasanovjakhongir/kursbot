@@ -8,7 +8,8 @@ import { phoneKeyboard } from "../bot/keyboards";
 import { sendToUser } from "../bot/notify";
 import { CB } from "../bot/ui/callbacks";
 import { checkOwnership, getActiveProduct } from "./products";
-import { displayCourseName, getSupportUrl } from "./settings";
+import { withLease } from "./leases";
+import { displayCourseName, getSupportPhone, getSupportUrl } from "./settings";
 import { userLang } from "./users";
 
 const HOUR = 3600_000;
@@ -24,7 +25,7 @@ const HOUR = 3600_000;
  * tekshiriladi. Bitta odamga 8 soatda bittadan ko'p eslatma yo'q, kechasi (22:00–09:00, Toshkent) yuborilmaydi.
  * Bosqichlar bir-birini istisno qiladi (raqam yo'q → telefon; raqam bor, buyurtma yo'q → «darslikni oling»; ochiq
  * buyurtma → to'lov), shuning uchun odam faqat o'zi turgan bosqichning eslatmasini oladi.
- * Faqat oxirgi 2 kunda botga kirganlar. Birinchi eslatma kechikib borgan bo'lsa (eslatmalar yoqilishidan oldingi
+ * Faqat sotuv ochilgandan (22.11) keyin kelganlar. Birinchi eslatma kechikib borgan bo'lsa (eslatmalar yoqilishidan oldingi
  * odamlar) — keyingilari yuborilmaydi: bunday odam bitta eslatma oladi.
  * Paneldagi «Bot matnlari → Eslatmalar» da matn bo'shatilsa — o'sha eslatma o'chadi.
  */
@@ -39,8 +40,12 @@ export const REMINDER_RULES = {
   payLastBeforeExpiryMs: 12 * HOUR,
   /** Bitta odamga ikki eslatma orasidagi eng kam vaqt */
   minGapMs: 8 * HOUR,
+  /**
+   * Faqat sotuv ochilgandan (22.11.2026, Toshkent) keyin botga kelganlar — undan oldingilar o'zimizning odamlar
+   */
+  since: new Date("2026-11-21T19:00:00Z"),
   /** Shundan uzoq vaqt botga kirmaganlarga eslatma yuborilmaydi */
-  maxIdleMs: 2 * 24 * HOUR,
+  maxIdleMs: 7 * 24 * HOUR,
   /**
    * Keyingi eslatmalar (phone_2, pay_2, pay_3) faqat birinchisi o'z vaqtida (bosqich boshlanganidan shu vaqt ichida)
    * borgan bo'lsa — eski odamlarga birinchi eslatma kechikib boradi va u yagona bo'ladi
@@ -69,6 +74,7 @@ async function audience(now: Date, news = true): Promise<Prisma.UserWhereInput> 
     isBot: false,
     isBlocked: false,
     isBanned: false,
+    createdAt: { gte: REMINDER_RULES.since },
     ...(news && { newsEnabled: true }),
     telegramId: { notIn: admins.map((a) => a.telegramId) },
     reminders: { none: { sentAt: { gt: new Date(now.getTime() - REMINDER_RULES.minGapMs) } } },
@@ -77,6 +83,8 @@ async function audience(now: Date, news = true): Promise<Prisma.UserWhereInput> 
 
 interface Message {
   key: TextKey;
+  /** Matnning o'zi «savolingiz bormi» deb so'raydi — oxiridagi sarlavha kerak emas */
+  noSupportTitle?: boolean;
   vars: Record<string, string>;
   markup: (lang: Lang, support: string | null) => InlineKeyboard | ReturnType<typeof phoneKeyboard> | undefined;
 }
@@ -98,7 +106,7 @@ async function deliver(api: Api, now: Date, seen: Set<bigint>, user: Recipient, 
   const body = await translate(lang, msg.key, { ism, ...msg.vars });
   if (!body.trim()) return false;
   const support = await getSupportUrl();
-  const text = joinParts([body, support ? await translate(lang, "reminder_support", { kontakt: `@${support.slice("https://t.me/".length)}` }) : null]);
+  const text = joinParts([body, await contactFooter(lang, support, !msg.noSupportTitle)]);
 
   const row = await prisma.reminder.create({ data: { userId: user.id, orderId, kind, sendAt: now } });
   try {
@@ -112,13 +120,27 @@ async function deliver(api: Api, now: Date, seen: Set<bigint>, user: Recipient, 
   }
 }
 
+/** Eslatma oxiri: «Savolingiz bo'lsa» + telefon (sozlamalardagi raqam) + Telegram profil */
+async function contactFooter(lang: Lang, support: string | null, withTitle: boolean): Promise<string | null> {
+  const phone = await getSupportPhone();
+  const lines = joinParts(
+    [
+      phone ? await translate(lang, "reminder_support_phone", { telefon: phone }) : null,
+      support ? await translate(lang, "reminder_support_telegram", { kontakt: `@${support.slice("https://t.me/".length)}` }) : null,
+    ],
+    "\n",
+  );
+  if (!lines) return null;
+  return joinParts([withTitle ? await translate(lang, "reminder_support") : null, lines], "\n");
+}
+
 async function courseVars(product: Product | null): Promise<Record<string, string>> {
   return product ? { mahsulot: await displayCourseName(product.title) } : {};
 }
 
 // ---------- Telefon bermaganlar (videoni ko'rmagan) ----------
 
-async function phoneReminders(api: Api, now: Date, seen: Set<bigint>): Promise<number> {
+async function phoneReminders(api: Api, now: Date, run: Run): Promise<number> {
   const base = await audience(now);
   const idle = { lte: new Date(now.getTime() - REMINDER_RULES.idleMs), gte: new Date(now.getTime() - REMINDER_RULES.maxIdleMs) };
   const previous = new Date(now.getTime() - REMINDER_RULES.nextAfterMs);
@@ -138,7 +160,7 @@ async function phoneReminders(api: Api, now: Date, seen: Set<bigint>): Promise<n
       where: { AND: [base, stage.where, { phone: null }] },
       select: { ...RECIPIENT, lastSeenAt: true, reminders: { where: { kind: "phone_1" }, select: { sentAt: true } } },
       orderBy: { lastSeenAt: "desc" },
-      take: REMINDER_RULES.batch,
+      take: run.batch,
     });
     for (const user of users) {
       const first = user.reminders[0]?.sentAt;
@@ -150,7 +172,7 @@ async function phoneReminders(api: Api, now: Date, seen: Set<bigint>): Promise<n
       const product = await getActiveProduct(user.lastProduct);
       const key: TextKey = product ? (stage.kind === "phone_1" ? "reminder_phone_1" : "reminder_phone_2") : "reminder_phone_generic";
       // Telefon tugmasi faqat pastki (reply) klaviaturada bo'ladi — admin lichkasi matnda
-      if (await deliver(api, now, seen, user, stage.kind, null, { key, vars: await courseVars(product), markup: (lang) => phoneKeyboard(lang) })) sent++;
+      if (await deliver(api, now, run.seen, user, stage.kind, null, { key, vars: await courseVars(product), markup: (lang) => phoneKeyboard(lang) })) sent++;
     }
   }
   return sent;
@@ -160,7 +182,7 @@ async function phoneReminders(api: Api, now: Date, seen: Set<bigint>): Promise<n
 
 const OPEN_STATUSES = ["new", "receipt_sent"] as const;
 
-async function upsellReminders(api: Api, now: Date, seen: Set<bigint>): Promise<number> {
+async function upsellReminders(api: Api, now: Date, run: Run): Promise<number> {
   const users = await prisma.user.findMany({
     where: {
       AND: [
@@ -177,7 +199,7 @@ async function upsellReminders(api: Api, now: Date, seen: Set<bigint>): Promise<
     },
     select: RECIPIENT,
     orderBy: { lastSeenAt: "desc" },
-    take: REMINDER_RULES.batch,
+    take: run.batch,
   });
   let sent = 0;
   for (const user of users) {
@@ -187,8 +209,9 @@ async function upsellReminders(api: Api, now: Date, seen: Set<bigint>): Promise<
       await prisma.reminder.create({ data: { userId: user.id, kind: "upsell", sendAt: now, cancelledAt: now } });
       continue;
     }
-    const ok = await deliver(api, now, seen, user, "upsell", null, {
+    const ok = await deliver(api, now, run.seen, user, "upsell", null, {
       key: "reminder_upsell",
+      noSupportTitle: true,
       vars: await courseVars(product),
       markup: (lang, support) =>
         supportButton(new InlineKeyboard().text(label(lang, "btn_buy"), CB.buy(product.code)).row().text(label(lang, "btn_reminder_video"), CB.product(product.code)), lang, support),
@@ -222,7 +245,7 @@ export function nextPayReminder(
 
 const PAY_TEXT = { pay_1: "reminder_pay_1", pay_2: "reminder_pay_2", pay_3: "reminder_pay_3" } as const;
 
-async function payReminders(api: Api, now: Date, seen: Set<bigint>): Promise<number> {
+async function payReminders(api: Api, now: Date, run: Run): Promise<number> {
   const orders = await prisma.order.findMany({
     where: {
       status: "new",
@@ -233,7 +256,7 @@ async function payReminders(api: Api, now: Date, seen: Set<bigint>): Promise<num
       transactions: { none: { state: 1 } },
       reminders: { none: { kind: "pay_3" } },
       user: await audience(now, false),
-      // Oxirgi 2 kunda botga kirgan yoki eslatmalar zanjiri allaqachon boshlangan
+      // Yaqinda botga kirgan yoki eslatmalar zanjiri allaqachon boshlangan
       OR: [{ user: { lastSeenAt: { gte: new Date(now.getTime() - REMINDER_RULES.maxIdleMs) } } }, { reminders: { some: { kind: "pay_1" } } }],
     },
     include: { product: true, user: { select: RECIPIENT }, reminders: { select: { kind: true, sentAt: true, cancelledAt: true, sendAt: true } } },
@@ -242,12 +265,12 @@ async function payReminders(api: Api, now: Date, seen: Set<bigint>): Promise<num
   });
   let sent = 0;
   for (const order of orders) {
-    if (sent >= REMINDER_RULES.batch) break;
+    if (sent >= run.batch) break;
     const done: Partial<Record<"pay_1" | "pay_2" | "pay_3", Date>> = {};
     for (const r of order.reminders) if (r.kind === "pay_1" || r.kind === "pay_2" || r.kind === "pay_3") done[r.kind] = r.sentAt ?? r.sendAt;
     const kind = nextPayReminder(order, done, now);
     if (!kind) continue;
-    const ok = await deliver(api, now, seen, order.user, kind, order.id, {
+    const ok = await deliver(api, now, run.seen, order.user, kind, order.id, {
       key: PAY_TEXT[kind],
       vars: { ...(await courseVars(order.product)), vaqt: formatShortDateTime(order.expiresAt) },
       markup: (lang, support) => supportButton(new InlineKeyboard().text(label(lang, "btn_reminder_pay"), CB.pay(order.id)), lang, support),
@@ -257,14 +280,32 @@ async function payReminders(api: Api, now: Date, seen: Set<bigint>): Promise<num
   return sent;
 }
 
+/** Bitta ishga tushish: bir odamga bitta xabar (seen) va har bir turdan ko'pi bilan batch ta */
+interface Run {
+  seen: Set<bigint>;
+  batch: number;
+}
+
 /** Fon vazifasi (jobs.ts): kunduzi har necha daqiqada navbatdagi eslatmalarni yuboradi */
-export async function processReminders(api: Api, now: Date = new Date()): Promise<{ pay: number; phone: number; upsell: number }> {
-  if (!isReminderHour(now)) return { pay: 0, phone: 0, upsell: 0 };
+export async function processReminders(
+  api: Api,
+  now: Date = new Date(),
+  opts: { anyHour?: boolean; batch?: number } = {},
+): Promise<{ pay: number; phone: number; upsell: number }> {
+  if (!opts.anyHour && !isReminderHour(now)) return { pay: 0, phone: 0, upsell: 0 };
   // Avval to'lov (eng muhim), keyin telefon va «darslikni oling»
-  const seen = new Set<bigint>();
-  const pay = await payReminders(api, now, seen);
-  const phone = await phoneReminders(api, now, seen);
-  const upsell = await upsellReminders(api, now, seen);
+  const run: Run = { seen: new Set<bigint>(), batch: opts.batch ?? REMINDER_RULES.batch };
+  const pay = await payReminders(api, now, run);
+  const phone = await phoneReminders(api, now, run);
+  const upsell = await upsellReminders(api, now, run);
   if (pay || phone || upsell) logger.info({ pay, phone, upsell }, "eslatmalar yuborildi");
   return { pay, phone, upsell };
+}
+
+/**
+ * Hozir, soatga qaramasdan, hamma navbatdagilarga bir martada (src/scripts/sendReminders.ts — admin qo'lda ishga
+ * tushiradi). Fon vazifasi bilan bir vaqtda ishlamaydi (bitta lease) — hech kim ikki marta olmaydi.
+ */
+export async function sendRemindersNow(api: Api) {
+  return withLease("job:reminders", 30 * 60_000, () => processReminders(api, new Date(), { anyHour: true, batch: 1000 }));
 }

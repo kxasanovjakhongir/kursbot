@@ -5,7 +5,7 @@ import { prisma } from "../../db";
 import { logActivity } from "../../services/activity";
 import { saveBotToken } from "../../services/botToken";
 import { BUTTON_COLORS, isButtonId, isColorableButton, listButtons, resetButtons, setButtonColors, setButtons } from "../../services/buttons";
-import { COURSE_NAME_MAX_LENGTH_LIMIT, getSettings, setSetting } from "../../services/settings";
+import { COURSE_NAME_MAX_LENGTH_LIMIT, getSettings, normalizeSupportPhone, setSetting } from "../../services/settings";
 import { editableTextError, getEditableTexts, isEditableText, saveEditableTexts, setTextsEnabled } from "../../services/texts";
 import { LANGS } from "../../i18n";
 import { normalizeTelegramUsername, TELEGRAM_USERNAME_ERROR } from "../../lib/telegramUsername";
@@ -77,6 +77,7 @@ export function botRouter(rt: BotRuntime): Router {
       workStart: s.work_start,
       workEnd: s.work_end,
       supportUsername: s.support_username ?? "",
+      supportPhone: s.support_phone ?? "",
       courseNameMaxLength: s.course_name_max_length,
     });
   });
@@ -98,6 +99,17 @@ export function botRouter(rt: BotRuntime): Router {
         const username = normalizeTelegramUsername(v);
         if (!username) zctx.addIssue({ code: "custom", message: TELEGRAM_USERNAME_ERROR });
         return username ?? z.NEVER;
+      })
+      .optional(),
+    // Bot yuboradigan aloqa raqami; bo'sh — o'chirish
+    supportPhone: z
+      .string()
+      .max(32)
+      .transform((v, zctx) => {
+        if (!v.trim()) return null;
+        const phone = normalizeSupportPhone(v);
+        if (!phone) zctx.addIssue({ code: "custom", message: "Telefon raqami noto'g'ri (masalan: +998 90 123 45 67)" });
+        return phone ?? z.NEVER;
       })
       .optional(),
   });
@@ -135,6 +147,10 @@ export function botRouter(rt: BotRuntime): Router {
     if (body.supportUsername !== undefined) {
       await setSetting("support_username", body.supportUsername);
       changed.push(`yordam: ${body.supportUsername ? `@${body.supportUsername}` : "o'chirildi"}`);
+    }
+    if (body.supportPhone !== undefined) {
+      await setSetting("support_phone", body.supportPhone);
+      changed.push(`aloqa raqami: ${body.supportPhone ?? "o'chirildi"}`);
     }
     await logActivity(currentUser(req).id, "UPDATE_BOT_SETTINGS", `Sozlamalar: ${changed.join(", ") || "o'zgarish yo'q"}`, clientIp(req));
     res.json({ ok: true });

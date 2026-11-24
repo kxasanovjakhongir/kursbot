@@ -11,11 +11,12 @@ const NOON = new Date("2026-11-24T07:00:00Z");
 const at = (ms: number) => new Date(NOON.getTime() + ms);
 
 describe("eslatmalar: vaqt va to'lov eslatmasi navbati", () => {
-  it("faqat kunduzi (Toshkent 09:00–21:00) yuboriladi", () => {
+  it("faqat 09:00–22:00 (Toshkent) yuboriladi", () => {
     expect(isReminderHour(NOON)).toBe(true);
     expect(isReminderHour(new Date("2026-11-24T03:59:00Z"))).toBe(false); // 08:59
     expect(isReminderHour(new Date("2026-11-24T04:00:00Z"))).toBe(true); // 09:00
-    expect(isReminderHour(new Date("2026-11-24T16:00:00Z"))).toBe(false); // 21:00
+    expect(isReminderHour(new Date("2026-11-24T16:59:00Z"))).toBe(true); // 21:59
+    expect(isReminderHour(new Date("2026-11-24T17:00:00Z"))).toBe(false); // 22:00
   });
 
   it("to'lov eslatmalari: 1 soatdan, ~1 kundan keyin va muddat tugashidan oldin", () => {

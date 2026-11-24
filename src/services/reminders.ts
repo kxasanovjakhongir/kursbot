@@ -21,7 +21,7 @@ const HOUR = 3600_000;
  *
  * Har bir eslatma o'z kursi bo'yicha ({mahsulot}) va «savolingiz bo'lsa — admin» qatori bilan. Odam kerakli qadamni
  * bajarsa (raqam bersa, buyurtma ochsa, to'lasa) keyingilari yuborilmaydi — shart har safar yuborishdan oldin qayta
- * tekshiriladi. Bitta odamga 8 soatda bittadan ko'p eslatma yo'q, kechasi (21:00–09:00, Toshkent) yuborilmaydi.
+ * tekshiriladi. Bitta odamga 8 soatda bittadan ko'p eslatma yo'q, kechasi (22:00–09:00, Toshkent) yuborilmaydi.
  * Bosqichlar bir-birini istisno qiladi (raqam yo'q → telefon; raqam bor, buyurtma yo'q → «darslikni oling»; ochiq
  * buyurtma → to'lov), shuning uchun odam faqat o'zi turgan bosqichning eslatmasini oladi.
  * Faqat oxirgi 2 kunda botga kirganlar. Birinchi eslatma kechikib borgan bo'lsa (eslatmalar yoqilishidan oldingi
@@ -48,7 +48,7 @@ export const REMINDER_RULES = {
   followUpWithinMs: 18 * HOUR,
   /** Toshkent vaqti bilan [dan, gacha) soatlarda yuboriladi */
   fromHour: 9,
-  toHour: 21,
+  toHour: 22,
   /** Bir ishga tushishda har bir turdan ko'pi bilan */
   batch: 25,
 } as const;

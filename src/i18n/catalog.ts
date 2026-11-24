@@ -217,7 +217,7 @@ export const TEXT_GROUPS: TextGroup[] = [
   {
     id: "reminders",
     title: "Eslatmalar",
-    description: "Avtomatik eslatmalar (kunduzi 09:00–21:00): telefon bermaganlarga — 1 soat va ~1 kundan keyin; videoni ko'rib olmaganlarga — 1 kundan keyin; to'lamaganlarga — 1 soat, ~1 kun va muddat tugashidan oldin. Matnni bo'shatsangiz — o'sha eslatma yuborilmaydi",
+    description: "Avtomatik eslatmalar (09:00–22:00): telefon bermaganlarga — 1 soat va ~1 kundan keyin; videoni ko'rib olmaganlarga — 1 kundan keyin; to'lamaganlarga — 1 soat, ~1 kun va muddat tugashidan oldin. Matnni bo'shatsangiz — o'sha eslatma yuborilmaydi",
     keys: {
       reminder_phone_1: { title: "Telefon bermagan (videoni ko'rmagan) — 1-eslatma", hint: "{mahsulot} — u tanlagan kurs" },
       reminder_phone_2: { title: "Telefon bermagan — 2-eslatma" },

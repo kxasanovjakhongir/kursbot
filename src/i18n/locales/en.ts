@@ -139,7 +139,7 @@ export const en: Messages = {
   course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nPick a course from the bundle 👇",
   lessons_title: "🎬 <b>{mahsulot}</b> — lessons ({soni})\n\n🔒 Buy the course to watch the lessons.",
   intro_video_title: "🎥 <b>{mahsulot}</b> — intro video",
-  intro_video_text: "Watch the video; course details and price are below 👇",
+  intro_video_text: "Watch the video — for full course details, call {telefon} 📞",
   btn_lessons: "🎬 Lessons ({soni})",
   btn_channel_link: "🔗 Channel link",
   lesson_locked: "🔒 You need to buy the course before you can use this lesson.",
@@ -178,7 +178,7 @@ export const en: Messages = {
   reminder_phone_2: "⏳ {ism}, the <b>{mahsulot}</b> video is waiting for you.\n\nTap «📱 Share phone number» below — the video will arrive right away 👇",
   reminder_phone_generic: "👋 {ism}, to see the courses, tap «📱 Share phone number» below 👇",
   reminder_upsell:
-    "{ism}, you watched the <b>{mahsulot}</b> video 🙂\n\nAny questions? Call us or write on Telegram — we'll answer them all.\n\nTo get the course, tap «✅ Get this textbook».",
+    "{ism}, you watched the <b>{mahsulot}</b> video 🙂\n\nAny questions? Call us or write on Telegram — we'll answer them all.",
   reminder_pay_1: "🧾 {ism}, your <b>{mahsulot}</b> order is open — payment hasn't been made yet.\n\nTap the button below to see the payment details 👇",
   reminder_pay_2: "⏳ {ism}, your <b>{mahsulot}</b> order is still unpaid.\n\nOnce you pay, you get access to the lessons right away 👇",
   reminder_pay_3: "⚠️ {ism}, your <b>{mahsulot}</b> order expires at <b>{vaqt}</b>.\n\nPay with the button below to make it in time 👇",

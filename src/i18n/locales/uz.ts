@@ -156,7 +156,7 @@ export const uz = {
   course_bundle_owned: "✅ <b>{mahsulot}</b>\n\nTo'plamdagi kursni tanlang 👇",
   lessons_title: "🎬 <b>{mahsulot}</b> — darslar ({soni} ta)\n\n🔒 Darslarni ko'rish uchun kursni xarid qiling.",
   intro_video_title: "🎥 <b>{mahsulot}</b> — tanishtiruv videosi",
-  intro_video_text: "Videoni ko'rib chiqing, kurs haqida batafsil ma'lumot va narx pastda 👇",
+  intro_video_text: "Videoni ko'rib chiqing — kurs haqida batafsil ma'lumot uchun {telefon} raqamiga aloqaga chiqing 📞",
   btn_lessons: "🎬 Darslar ({soni})",
   btn_channel_link: "🔗 Kanal havolasi",
   lesson_locked: "🔒 Bu darslikdan foydalanish uchun avval kursni xarid qilishingiz kerak.",
@@ -203,7 +203,7 @@ export const uz = {
   reminder_phone_generic:
     "👋 {ism}, darsliklarni ko'rish uchun pastdagi «📱 Raqamni yuborish» tugmasini bosing 👇",
   reminder_upsell:
-    "{ism}, <b>{mahsulot}</b> darsligi videosini ko'rdingiz 🙂\n\nQanday savolingiz bor? Bemalol qo'ng'iroq qiling yoki Telegramda yozing — hammasiga javob beramiz.\n\nDarslikni olish uchun «✅ Darslikni olaman» tugmasini bosing.",
+    "{ism}, <b>{mahsulot}</b> darsligi videosini ko'rdingiz 🙂\n\nQanday savolingiz bor? Bemalol qo'ng'iroq qiling yoki Telegramda yozing — hammasiga javob beramiz.",
   reminder_pay_1:
     "🧾 {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz ochiq — to'lov hali qilinmagan.\n\nTo'lov ma'lumotlarini ko'rish uchun pastdagi tugmani bosing 👇",
   reminder_pay_2:

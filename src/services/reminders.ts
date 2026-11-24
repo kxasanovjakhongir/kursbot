@@ -214,7 +214,7 @@ async function upsellReminders(api: Api, now: Date, run: Run): Promise<number> {
       noSupportTitle: true,
       vars: await courseVars(product),
       markup: (lang, support) =>
-        supportButton(new InlineKeyboard().text(label(lang, "btn_buy"), CB.buy(product.code)).row().text(label(lang, "btn_reminder_video"), CB.product(product.code)), lang, support),
+        supportButton(new InlineKeyboard().text(label(lang, "btn_reminder_video"), CB.product(product.code)), lang, support),
     });
     if (ok) sent++;
   }

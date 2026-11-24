@@ -19,11 +19,19 @@ import { rememberPaymentScreen } from "../lastPayment";
 import { refreshInviteLink } from "../../services/access";
 import { trackEvent } from "../../services/events";
 import { crmCourseName, sendCourseToCrm, sendLeadToCrm } from "../../services/crm";
-import { displayCourseName, getSettings, getSupportUrl } from "../../services/settings";
+import { displayCourseName, getSettings, getSupportPhone, getSupportUrl } from "../../services/settings";
 import { prisma } from "../../db";
 
 export const customer = new Composer<BotContext>();
 const pm = customer.chatType("private");
+
+/** Video izohidagi aloqa: sozlamalardagi raqam, bo'lmasa Telegram yordam profili */
+async function contactForCaption(): Promise<string> {
+  const phone = await getSupportPhone();
+  if (phone) return phone;
+  const url = await getSupportUrl();
+  return url ? `@${url.slice("https://t.me/".length)}` : "";
+}
 
 function firstName(user: User): string {
   return user.firstName ?? displayName(user);
@@ -70,11 +78,10 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
     return;
   }
 
-  const screen = await productScreen(ctx, product);
+  let videoSent = false;
   if (product.videoFileId) {
-    const vars = { mahsulot: await displayCourseName(product.title) };
-    // Avval tanishtiruv videosi (hamma ko'radi), keyin alohida xabarda tavsif, narx va «Sotib olish» —
-    // foydalanuvchi videoni ko'rib bo'lgach pastdagi tugmani bosadi
+    // Faqat tanishtiruv videosi: narx kartochkasi yuborilmaydi — izohda «batafsil ma'lumot uchun shu raqamga» ({telefon})
+    const vars = { mahsulot: await displayCourseName(product.title), telefon: await contactForCaption() };
     try {
       await ctx.replyWithVideo(product.videoFileId, {
         // Sarlavha + paneldan tahrirlanadigan tanishtiruv matni
@@ -82,15 +89,14 @@ async function presentProduct(ctx: BotContext, product: Product): Promise<void> 
         parse_mode: "HTML",
         supports_streaming: true,
       });
+      videoSent = true;
     } catch (err) {
-      // Video Telegram'da topilmasa ham kursni ko'rish va sotib olish to'xtamaydi
+      // Video Telegram'da topilmasa — odam bo'sh qolmasin: kurs kartochkasi
       if (!isUnavailableFileError(err)) throw err;
       ctx.log.error({ err, product: product.code }, "tanishtiruv videosi yuborilmadi (file_id yaroqsiz)");
     }
-    await renderNew(ctx, screen);
-  } else {
-    await render(ctx, screen);
   }
+  if (!videoSent) await render(ctx, await productScreen(ctx, product));
   // "Kurs ko'rildi" (funnel bosqichi); link — qaysi reklama orqali
   await trackEvent(user.id, "product_view", { product: product.code, link: user.lastLinkId ?? null, via: "bot" });
 }

@@ -60,7 +60,7 @@ export const TEXT_GROUPS: TextGroup[] = [
       choose_product: { title: "Darsliklar ro'yxati sarlavhasi" },
       no_products: { title: "Sotuvda darslik yo'q" },
       intro_video_title: { title: "Tanishtiruv videosi — sarlavha", format: "part", max: 200, hint: "Video izohining birinchi qatori" },
-      intro_video_text: { title: "Kurs tanishtiruv matni", format: "part", max: 800, vars: ["mahsulot"], hint: "Video izohida sarlavhadan keyin chiqadi" },
+      intro_video_text: { title: "Kurs tanishtiruv matni", format: "part", max: 800, vars: ["mahsulot", "telefon"], hint: "Video izohida sarlavhadan keyin chiqadi. {telefon} — Sozlamalar → «Bot yuboradigan raqam». Video bo'lsa narx kartochkasi yuborilmaydi" },
       product_caption: { title: "Kurs kartochkasi" },
       course_about_title: { title: "«Kurs haqida» — sarlavha" },
       course_fact_duration: { title: "«Kurs haqida» — davomiyligi", format: "part" },

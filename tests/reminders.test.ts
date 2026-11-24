@@ -123,7 +123,8 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
     expect(upsell.text).toContain("4 bosqichda");
     expect(upsell.text).toContain("Qanday savolingiz bor");
     expect(upsell.text).toContain("+998 90 123 45 67");
-    expect(json(upsell.markup)).toContain('"buy:r4"');
+    expect(json(upsell.markup)).toContain('"p:r4"');
+    expect(json(upsell.markup)).not.toContain('"buy:r4"');
     expect(json(upsell.markup)).toContain("https://t.me/verda_admin");
 
     const [pay] = to(9004);

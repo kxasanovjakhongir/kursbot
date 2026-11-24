@@ -388,7 +388,7 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     expect((await prisma.product.findUniqueOrThrow({ where: { code: "js" } })).title).toBe("Node js kursi");
   });
 
-  it("TEST 6 + 7: sotib olmagan foydalanuvchi kursni tanlaydi — tanishtiruv video, tavsif, narx, Sotib olish; darslar yopiq; Mini App yo'q", async () => {
+  it("TEST 6 + 7: sotib olmagan foydalanuvchi kursni tanlaydi — faqat tanishtiruv video (narxsiz, izohda aloqa raqami); Mini App yo'q", async () => {
     await prisma.user.create({ data: { telegramId: BigInt(AZIZ.id), firstName: "Aziz", phone: "+998901234567" } });
     await prisma.product.update({ where: { code: "js" }, data: { videoFileId: "intro-js", description: "JavaScript asoslari" } });
     const course = await prisma.product.findUniqueOrThrow({ where: { code: "js" } });
@@ -396,26 +396,23 @@ describe.skipIf(!enabled)("kurs darslari va menyu (integratsion)", () => {
     calls = [];
 
     await send(callback("p:js"));
-    // Avval tanishtiruv videosi, keyin alohida xabarda tavsif, narx va «Sotib olish»
+    // Faqat tanishtiruv videosi — narx kartochkasi (tavsif, narx, «Sotib olish») yuborilmaydi
     const order = calls.filter((c) => c.method === "sendVideo" || c.method === "sendMessage");
-    expect(order.map((c) => c.method)).toEqual(["sendVideo", "sendMessage"]);
-    const [intro, info] = order;
+    expect(order.map((c) => c.method)).toEqual(["sendVideo"]);
+    const [intro] = order;
     expect(intro.payload.video).toBe("intro-js"); // tanishtiruv (preview) videosi — ochiq
     expect(String(intro.payload.caption)).toContain("tanishtiruv videosi");
-    expect(String(info.payload.text)).toContain("JavaScript asoslari");
-    expect(String(info.payload.text)).toContain("500 000");
-    const kb = buttons(info);
-    expect(kb.some((b) => b.callback_data === "buy:js")).toBe(true);
-    // Kurs kartochkasi: «Darslikni olaman» va «Bosh menyu» bor, «Orqaga» yo'q
-    expect(kb.some((b) => b.callback_data === "nav:home")).toBe(true);
-    expect(kb.some((b) => b.text === uz.btn_back || b.callback_data === "nav:cat:1")).toBe(false);
-    // Support username sozlanmagan — «Savol berish» chiqmaydi; sozlangach «Darslikni olaman» yonida chiqadi
-    expect(kb.some((b) => b.url)).toBe(false);
+    expect(String(intro.payload.caption)).not.toContain("500 000");
+    expect(buttons(intro).some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
+    // Izohda aloqa: raqam sozlangan bo'lsa — raqam, bo'lmasa Telegram yordam profili
     await setSetting("support_username", "my_support");
     calls = [];
     await send(callback("p:js"));
-    expect(lastButtons().find((b) => b.text === uz.btn_ask)?.url).toBe("https://t.me/my_support");
-    expect([...kb, ...buttons(intro)].some((b) => (b as { web_app?: unknown }).web_app)).toBe(false);
+    expect(String(calls.find((c) => c.method === "sendVideo")!.payload.caption)).toContain("@my_support");
+    await setSetting("support_phone", "+998 91 809 00 71");
+    calls = [];
+    await send(callback("p:js"));
+    expect(String(calls.find((c) => c.method === "sendVideo")!.payload.caption)).toContain("+998 91 809 00 71 raqamiga aloqaga chiqing");
     // Asosiy dars videosi yuborilmagan
     expect(calls.filter((c) => c.method === "sendVideo").map((c) => c.payload.video)).toEqual(["intro-js"]);
   });

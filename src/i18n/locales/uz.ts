@@ -194,6 +194,25 @@ export const uz = {
   adm_stats:
     "📊 <b>Statistika</b>\n\n👥 <b>Foydalanuvchilar</b>\nJami: {jami}\nBugun yangi: {bugun}\n7 kunda yangi: {hafta}\nFaol (30 kun): {faol}\nBotni bloklagan: {bloklagan}\n\n🛒 <b>Savdo</b>\nBugungi buyurtmalar: {buyurtmalar}\nKutilayotgan cheklar: {cheklar}\nBugungi tushum: {tushum_bugun}\n30 kunlik tushum: {tushum_oy}\n\n🕒 {vaqt}",
   adm_no_permission: "⛔️ Bu bo'lim uchun ruxsatingiz yo'q.",
+
+  // ---------- Eslatmalar (avtomatik) ----------
+  reminder_phone_1:
+    "👋 {ism}, siz <b>{mahsulot}</b> darsligini tanladingiz, lekin tanishtiruv videosini hali ko'rmadingiz.\n\n🎥 Videoni ko'rish uchun pastdagi «📱 Raqamni yuborish» tugmasini bosing — video darhol keladi 👇",
+  reminder_phone_2:
+    "⏳ {ism}, <b>{mahsulot}</b> darsligi videosi sizni kutyapti.\n\nPastdagi «📱 Raqamni yuborish» tugmasini bosing — video shu zahoti keladi 👇",
+  reminder_phone_generic:
+    "👋 {ism}, darsliklarni ko'rish uchun pastdagi «📱 Raqamni yuborish» tugmasini bosing 👇",
+  reminder_upsell:
+    "{ism}, <b>{mahsulot}</b> darsligi videosini ko'rdingizmi? 🙂\n\nDarslikni olish uchun «✅ Darslikni olaman» tugmasini bosing.",
+  reminder_pay_1:
+    "🧾 {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz ochiq — to'lov hali qilinmagan.\n\nTo'lov ma'lumotlarini ko'rish uchun pastdagi tugmani bosing 👇",
+  reminder_pay_2:
+    "⏳ {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz hali to'lanmagan.\n\nTo'lovni qilsangiz, darslarga darhol kirasiz 👇",
+  reminder_pay_3:
+    "⚠️ {ism}, <b>{mahsulot}</b> darsligi buyurtmangiz muddati <b>{vaqt}</b> da tugaydi.\n\nUlgurish uchun pastdagi tugma orqali to'lovni qiling 👇",
+  reminder_support: "❓ Savolingiz bo'lsa, adminga yozing: {kontakt}",
+  btn_reminder_pay: "💳 To'lovga o'tish",
+  btn_reminder_video: "🎥 Videoni qayta ko'rish",
 };
 
 export type Messages = typeof uz;

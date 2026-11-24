@@ -50,6 +50,9 @@ enum ReminderKind {
   video
   upsell
   join
+  // Kursni tanlagan, telefon bermagan (videoni ko'rmagan) — 1- va 2-eslatma
+  phone_1
+  phone_2
 }
 
 enum AdminRole {

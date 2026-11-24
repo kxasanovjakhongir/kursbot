@@ -9,6 +9,7 @@ import { processBroadcasts, stopBroadcastWorker } from "./broadcast";
 import { withLease } from "./leases";
 import { runAccessChecks } from "./membership";
 import { expireStaleOrders } from "./orders";
+import { processReminders } from "./reminders";
 import { purgeExpiredState } from "./sharedState";
 import { purgeOldSupportButtons, syncSupportButtons } from "./supportButtons";
 
@@ -76,6 +77,8 @@ const JOBS: Job[] = [
   { name: "access", intervalMs: 5 * 60_000, leaseMs: 4 * 60_000, firstRunMs: 30_000, run: runAccessChecks },
   // Paneldan support username o'zgarsa — eski xabarlardagi "Yordam" tugmalari yangi havolaga
   { name: "support-buttons", intervalMs: 20_000, leaseMs: 10 * 60_000, firstRunMs: 15_000, run: async (api) => void (await syncSupportButtons(api)) },
+  // To'xtab qolgan mijozlarga eslatmalar (telefon, video, to'lov) — kunduzi, har 2 daqiqada navbatdagilari
+  { name: "reminders", intervalMs: 2 * 60_000, leaseMs: 10 * 60_000, firstRunMs: 90_000, run: async (api) => void (await processReminders(api)) },
   { name: "maintenance", intervalMs: 60 * 60_000, leaseMs: 30 * 60_000, firstRunMs: 60_000, run: () => maintenance() },
 ];
 

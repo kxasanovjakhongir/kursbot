@@ -31,6 +31,9 @@ describe("eslatmalar: vaqt va to'lov eslatmasi navbati", () => {
     expect(nextPayReminder(order, {}, at(71.7 * HOUR))).toBeNull();
     // Oxirgi eslatma oldingisidan keyin juda tez emas
     expect(nextPayReminder(order, { pay_1: at(HOUR), pay_2: at(60 * HOUR) }, at(62 * HOUR))).toBeNull();
+    // Eski buyurtma: 1-eslatma kechikib borgan — boshqasi yo'q (odam bitta eslatma oladi)
+    expect(nextPayReminder(order, { pay_1: at(30 * HOUR) }, at(55 * HOUR))).toBeNull();
+    expect(nextPayReminder(order, { pay_1: at(30 * HOUR) }, at(62 * HOUR))).toBeNull();
   });
 });
 
@@ -67,13 +70,18 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
     await user(9003n, { phone: "+998901112233", lastProduct: "r4", lastSeenAt: at(-25 * HOUR) }); // videoni ko'rgan
     const payer = await user(9004n, { phone: "+998901112244", lastProduct: "rq", lastSeenAt: at(-2 * HOUR) });
     await user(9005n, { lastProduct: "r4", lastSeenAt: at(-20 * 24 * HOUR) }); // juda eski
+    await user(9008n, { lastProduct: "r4", lastSeenAt: at(-30 * HOUR) }); // kecha kirgan (eski odam) — bitta eslatma
+    await user(9009n, { lastProduct: "r4", lastSeenAt: at(-3 * 24 * HOUR) }); // 2 kundan oldin
     await user(9006n, { lastProduct: "r4", lastSeenAt: at(-2 * HOUR), isBlocked: true });
     await user(9007n, { lastProduct: "r4", lastSeenAt: at(-2 * HOUR), newsEnabled: false });
     const order = await prisma.order.create({
       data: { userId: payer.id, productId: rules.id, amount: 100, status: "new", createdAt: at(-2 * HOUR), expiresAt: at(70 * HOUR) },
     });
     orderId = order.id;
-    void fourStep;
+    // Ikkinchi kursga ham ochiq buyurtma — baribir bitta xabar
+    await prisma.order.create({
+      data: { userId: payer.id, productId: fourStep.id, amount: 100, status: "new", createdAt: at(-90 * 60_000), expiresAt: at(70 * HOUR) },
+    });
   });
 
   afterAll(async () => {
@@ -87,8 +95,8 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
   });
 
   it("har biriga o'z kursi bo'yicha eslatma va admin lichkasi", async () => {
-    expect(await processReminders(fakeApi, NOON)).toEqual({ pay: 1, phone: 1, upsell: 1 });
-    expect(sent.map((s) => s.chatId).sort()).toEqual([9001, 9003, 9004]);
+    expect(await processReminders(fakeApi, NOON)).toEqual({ pay: 1, phone: 2, upsell: 1 });
+    expect(sent.map((s) => s.chatId).sort()).toEqual([9001, 9003, 9004, 9008]);
 
     const [phone] = to(9001);
     expect(phone.text).toContain("qonun qoidalari");
@@ -112,13 +120,16 @@ describe.skipIf(!enabled)("eslatmalar: kimga va qachon yuboriladi", () => {
     expect(await processReminders(fakeApi, next)).toEqual({ pay: 1, phone: 2, upsell: 0 });
     expect(to(9001)).toHaveLength(2);
     expect(to(9002)).toHaveLength(1);
-    expect(to(9005).length + to(9006).length + to(9007).length).toBe(0);
+    expect(to(9005).length + to(9006).length + to(9007).length + to(9009).length).toBe(0);
+    expect(to(9008)).toHaveLength(1); // eski odam — faqat bitta eslatma
     expect(to(9003)).toHaveLength(1); // «darslikni oling» — bir marta
-    expect(await prisma.reminder.count({ where: { sentAt: { not: null } } })).toBe(6);
+    expect(await prisma.reminder.count({ where: { sentAt: { not: null } } })).toBe(7);
   });
 
   it("odam qadamni bajarsa (raqam bersa, to'lasa) — boshqa eslatma yo'q", async () => {
+    // To'ladi (ikkinchi kursdan esa voz kechdi)
     await prisma.order.update({ where: { id: orderId }, data: { status: "approved" } });
+    await prisma.order.updateMany({ where: { status: "new" }, data: { status: "cancelled" } });
     // To'lov eslatmasining oxirgisi vaqti keldi, lekin buyurtma to'langan
     expect((await processReminders(fakeApi, at(62 * HOUR))).pay).toBe(0);
     expect(to(9004)).toHaveLength(2);

@@ -111,6 +111,7 @@ export const TEXT_GROUPS: TextGroup[] = [
       payment_info_online: { title: "Onlayn to'lov — sarlavha (karta yo'q)", hint: "Faqat Payme / Click yoqilgan va faol karta yo'q bo'lganda" },
       payment_step_online: { title: "Onlayn to'lov ko'rsatmasi (karta yo'q)", format: "part" },
       payment_online_hint: { title: "Karta bilan birga: onlayn to'lov eslatmasi", format: "part" },
+      admin_pay_link: { title: "Admin yuborgan to'lov havolasi", vars: ["ism", "mahsulot", "summa", "muddat"], hint: "Admin panel → foydalanuvchi → «To'lov havolasi». Ostida Click va Payme tugmalari chiqadi" },
       order_cancel_confirm: { title: "Bekor qilishni tasdiqlash" },
       order_cancelled: { title: "Buyurtma bekor qilindi" },
       order_cancel_failed: { title: "Bekor qilib bo'lmaydi", format: "popup" },

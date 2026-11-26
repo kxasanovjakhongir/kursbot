@@ -84,7 +84,8 @@ export async function listOpenOrders(userId: bigint) {
  */
 export async function applyCurrentPrice<T extends Order>(order: T, product: Pick<Product, "price">): Promise<T> {
   const price = Math.round(product.price);
-  if (order.status !== "new" || price <= 0 || price === order.amount) return order;
+  // Admin qo'ygan narx (to'lov havolasi) saqlanadi
+  if (order.customAmount || order.status !== "new" || price <= 0 || price === order.amount) return order;
   const res = await prisma.order.updateMany({
     where: { id: order.id, status: "new", amount: { not: price }, transactions: { none: { state: TX_STATE.pending } } },
     data: { amount: price },
@@ -97,7 +98,7 @@ export async function syncOpenOrderPrices(productId: number, price: number): Pro
   const amount = Math.round(price);
   if (amount <= 0) return 0;
   const res = await prisma.order.updateMany({
-    where: { productId, status: "new", amount: { not: amount }, transactions: { none: { state: TX_STATE.pending } } },
+    where: { productId, status: "new", customAmount: false, amount: { not: amount }, transactions: { none: { state: TX_STATE.pending } } },
     data: { amount },
   });
   return res.count;
@@ -272,4 +273,49 @@ export async function pendingReceiptOrders(limit = 20) {
     orderBy: { updatedAt: "asc" },
     take: limit,
   });
+}
+
+export type AdminPayOrderResult =
+  | { kind: "ok"; order: Order; reused: boolean }
+  | { kind: "under_review" | "paying" | "no_online"; order?: Order };
+
+/**
+ * Admin paneldan «To'lov havolasi»: shu kursga admin yozgan narx bilan buyurtma (Payme / Click shu summani tekshiradi).
+ * Ochiq to'lanmagan buyurtma bo'lsa — o'sha yangilanadi (bitta odamda bitta kursga bitta ochiq buyurtma, BR-01).
+ */
+export async function createAdminPayOrder(userId: bigint, product: Product, amount: number, days: number): Promise<AdminPayOrderResult> {
+  if (!onlinePaymentsEnabled()) return { kind: "no_online" };
+  await expireStaleOrders(userId);
+  const expiresAt = new Date(Date.now() + days * 86400_000);
+  const sum = Math.round(amount);
+
+  const existing = await findOpenOrder(userId, product.id);
+  if (existing) {
+    if (existing.status === "receipt_sent") return { kind: "under_review", order: existing };
+    const pending = await prisma.paymentTransaction.count({ where: { orderId: existing.id, state: TX_STATE.pending } });
+    if (pending > 0) return { kind: "paying", order: existing };
+    if (existing.status === "new") {
+      const order = await prisma.order.update({ where: { id: existing.id }, data: { amount: sum, customAmount: true, expiresAt } });
+      return { kind: "ok", order, reused: true };
+    }
+    // Rad etilgan chek — yopiladi, o'rniga yangi buyurtma
+    await transition(existing.id, ["rejected"], "cancelled", { cancelledAt: new Date(), cancelReason: "Admin yangi to'lov havolasi yubordi" });
+  }
+
+  const order = await prisma.$transaction(async (tx) => {
+    const card = await pickCard(tx);
+    return tx.order.create({
+      data: {
+        userId,
+        productId: product.id,
+        amount: sum,
+        customAmount: true,
+        cardId: card?.id ?? null,
+        source: "admin_link",
+        linkId: await attributedLinkId(tx, userId),
+        expiresAt,
+      },
+    });
+  });
+  return { kind: "ok", order, reused: false };
 }

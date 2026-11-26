@@ -8,6 +8,8 @@ import { createApp } from "../src/api/app";
 import { createPanelUser } from "../src/services/panelUsers";
 import { invalidateSettings } from "../src/services/settings";
 import { errorSinkStream, flushErrorLogs } from "../src/lib/errorSink";
+import { config } from "../src/config";
+import { applyCurrentPrice, syncOpenOrderPrices } from "../src/services/orders";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
 
@@ -741,5 +743,56 @@ describe.skipIf(!enabled)("admin API", () => {
     expect((await request(app).post("/api/errors/resolve-all").set(auth)).body.count).toBe(2);
     expect((await request(app).delete("/api/errors/resolved").set(auth)).body.count).toBe(2);
     expect(await prisma.errorLog.count()).toBe(0);
+  });
+
+  it("to'lov havolasi: admin narxi bilan buyurtma, Click/Payme summasi, narx o'zgarsa ham saqlanadi", async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const cfg = config as unknown as Record<string, unknown>;
+    const online = { PAYME_MERCHANT_ID: "5e730e8e0b852a417aa49ceb", PAYME_KEY: "payme-key", PAYME_TEST_MODE: false, CLICK_SERVICE_ID: "12345", CLICK_MERCHANT_ID: "6789", CLICK_SECRET_KEY: "click-secret" };
+    const saved = Object.fromEntries(Object.keys(online).map((k) => [k, cfg[k]]));
+    Object.assign(cfg, online);
+    try {
+      const product = await prisma.product.create({ data: { code: "qoida-pl", title: "Qonun qoidalar", price: 1_800_000, channelId: -1009n } });
+      const user = await prisma.user.create({ data: { telegramId: 7701n, firstName: "Misha", phone: "+998997006662" } });
+      const products = await request(app).get("/api/telegram-users/pay-products").set(auth);
+      expect(products.body.items).toContainEqual({ id: product.id, title: "Qonun qoidalar", price: 1_800_000 });
+
+      expect((await request(app).post(`/api/telegram-users/${user.id}/pay-link`).set(auth).send({ productId: product.id, amount: 10 })).status).toBe(400);
+      const before = sent.length;
+      const res = await request(app).post(`/api/telegram-users/${user.id}/pay-link`).set(auth).send({ productId: product.id, amount: 1_500_000, days: 5 });
+      expect(res.status).toBe(200);
+      expect(res.body.delivered).toBe(true);
+      expect(sent.slice(before)).toEqual([7701]);
+      expect(res.body.amount).toBe(1_500_000);
+      expect(res.body.clickUrl).toContain("amount=1500000");
+      expect(res.body.clickUrl).toContain(`transaction_param=${res.body.orderId}`);
+      const payme = Buffer.from(res.body.paymeUrl.split("/").pop(), "base64").toString();
+      expect(payme).toContain(`ac.order_id=${res.body.orderId}`);
+      expect(payme).toContain("a=150000000");
+
+      const order = await prisma.order.findUniqueOrThrow({ where: { id: BigInt(res.body.orderId) } });
+      expect(order).toMatchObject({ amount: 1_500_000, customAmount: true, status: "new", source: "admin_link" });
+      expect(Math.round((order.expiresAt.getTime() - Date.now()) / 86400_000)).toBe(5);
+      const note = await prisma.notification.findFirstOrThrow({ where: { userId: user.id, kind: "order" } });
+      expect(note.text).toContain("Qonun qoidalar");
+      expect(note.text).toContain("1 500 000");
+
+      // Kurs narxi o'zgarsa ham admin qo'ygan summa o'zgarmaydi
+      expect(await syncOpenOrderPrices(product.id, 2_000_000)).toBe(0);
+      expect((await applyCurrentPrice(order, { price: 2_000_000 })).amount).toBe(1_500_000);
+
+      // Qayta yuborilsa — o'sha buyurtma yangi narxga o'tadi (ikkinchi buyurtma ochilmaydi)
+      const again = await request(app).post(`/api/telegram-users/${user.id}/pay-link`).set(auth).send({ productId: product.id, amount: 1_200_000 });
+      expect(again.body.orderId).toBe(res.body.orderId);
+      expect((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).amount).toBe(1_200_000);
+      expect(await prisma.order.count({ where: { userId: user.id } })).toBe(1);
+      expect(await prisma.activityLog.count({ where: { action: "SEND_PAY_LINK" } })).toBe(2);
+
+      // Sotib olgan bo'lsa — yuborilmaydi
+      await prisma.order.update({ where: { id: order.id }, data: { status: "approved", paidAt: new Date() } });
+      expect((await request(app).post(`/api/telegram-users/${user.id}/pay-link`).set(auth).send({ productId: product.id, amount: 1_000_000 })).status).toBe(409);
+    } finally {
+      Object.assign(cfg, saved);
+    }
   });
 });

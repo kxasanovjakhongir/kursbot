@@ -59,6 +59,7 @@ export const ru: Messages = {
   payment_info_online: "🧾 <b>Заказ #{raqam}</b>\n\n📚 Учебник: {mahsulot}\n💰 Сумма: <b>{summa}</b>",
   payment_step_online: "💳 Оплатите через Payme или Click по кнопке ниже — оплата подтвердится автоматически, и курс откроется сразу.",
   payment_online_hint: "💳 Или оплатите онлайн через Payme / Click — чек отправлять не нужно, оплата подтвердится автоматически.",
+  admin_pay_link: "Здравствуйте, {ism}! Вам отправлена ссылка на оплату курса <b>{mahsulot}</b>.\n\n💰 Сумма: <b>{summa}</b>\n⏳ Ссылка действует до {muddat}.\n\nПосле оплаты курс откроется автоматически. Оплатите через Click или Payme по кнопке ниже 👇",
   btn_pay_payme: "💳 Оплатить через Payme",
   btn_pay_click: "💳 Оплатить через Click",
   btn_copy_card: "📋 Скопировать номер карты",

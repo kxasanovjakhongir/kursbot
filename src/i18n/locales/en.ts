@@ -59,6 +59,7 @@ export const en: Messages = {
   payment_info_online: "🧾 <b>Order #{raqam}</b>\n\n📚 Course: {mahsulot}\n💰 Amount: <b>{summa}</b>",
   payment_step_online: "💳 Pay in the Payme or Click app using the button below — the payment is confirmed automatically and the course opens right away.",
   payment_online_hint: "💳 Or pay online with Payme / Click — no receipt needed, the payment is confirmed automatically.",
+  admin_pay_link: "Hello, {ism}! Here is your payment link for <b>{mahsulot}</b>.\n\n💰 Amount: <b>{summa}</b>\n⏳ The link is valid until {muddat}.\n\nThe course opens automatically after payment. Pay with Click or Payme using the button below 👇",
   btn_pay_payme: "💳 Pay with Payme",
   btn_pay_click: "💳 Pay with Click",
   btn_copy_card: "📋 Copy card number",

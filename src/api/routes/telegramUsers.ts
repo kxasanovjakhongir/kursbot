@@ -9,7 +9,15 @@ import { banUser, KickFailedError, revokeGrantById, setGrantExpiry, unbanUser } 
 import { searchUsers, userLang, type UserFilter } from "../../services/users";
 import { EXPORT_MIME, exportFileName, prepareUserExport, type ExportFormat } from "../../services/export";
 import { logger } from "../../lib/logger";
-import { formatDate } from "../../lib/format";
+import { formatDate, formatDateTime, formatSum } from "../../lib/format";
+import { clickEnabled, paymeEnabled } from "../../config";
+import { botUsername } from "../../services/botInfo";
+import { createAdminPayOrder } from "../../services/orders";
+import { checkOwnership } from "../../services/products";
+import { displayCourseName } from "../../services/settings";
+import { clickCheckoutUrl } from "../../services/payments/click";
+import { returnUrl } from "../../services/payments/common";
+import { paymeCheckoutUrl } from "../../services/payments/payme";
 import { assertPermission, currentUser } from "../auth";
 import { HttpError } from "../errors";
 import type { BotRuntime } from "../runtime";
@@ -50,6 +58,14 @@ const expirySchema = z
   })
   .strict()
   .refine((b) => (b.expiresAt === undefined) !== (b.days === undefined), "expiresAt yoki days dan bittasini yuboring");
+
+const payLinkSchema = z
+  .object({
+    productId: z.number().int().positive(),
+    amount: z.number().int("Narx butun son bo'lsin").min(1000, "Narx kamida 1 000 so'm").max(100_000_000, "Narx juda katta"),
+    days: z.number().int().min(1).max(30).default(7),
+  })
+  .strict();
 
 const messageSchema = z.object({ text: z.string().trim().min(1, "Xabar matni bo'sh").max(3500) });
 
@@ -124,6 +140,16 @@ export function telegramUsersRouter(rt: BotRuntime): Router {
       sources: sources.map((s) => s.firstSource).filter((s): s is string => !!s),
       campaigns: campaigns.map((c) => c.campaign).filter((c): c is string => !!c),
     });
+  });
+
+  /** «To'lov havolasi» oynasi uchun: sotuvdagi kurslar va joriy narxi */
+  r.get("/pay-products", async (_req, res) => {
+    const items = await prisma.product.findMany({
+      where: { deletedAt: null, isActive: true },
+      select: { id: true, title: true, price: true },
+      orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    });
+    res.json({ items });
   });
 
   r.get("/:id", async (req, res) => {
@@ -244,6 +270,51 @@ export function telegramUsersRouter(rt: BotRuntime): Router {
       clientIp(req),
     );
     res.json({ delivered: !!sent });
+  });
+
+  /**
+   * «To'lov havolasi»: admin kurs va narxni tanlaydi — shu summa bilan buyurtma ochiladi va bot foydalanuvchiga
+   * Click / Payme tugmalarini yuboradi. To'lansa, buyurtma avtomatik tasdiqlanib kanal havolasi boradi.
+   */
+  r.post("/:id/pay-link", async (req, res) => {
+    assertPermission(req, "users.manage");
+    const { productId, amount, days } = parseBody(payLinkSchema, req);
+    const user = await findUser(parseBigId(req.params.id));
+    const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
+    if (!product) throw new HttpError(404, "Kurs topilmadi");
+    const own = await checkOwnership(user.id, product);
+    if (own.kind === "owned") throw new HttpError(409, "Bu foydalanuvchi bu kursni allaqachon sotib olgan");
+
+    const result = await createAdminPayOrder(user.id, product, amount, days);
+    if (result.kind === "no_online") throw new HttpError(409, "Payme / Click sozlanmagan");
+    if (result.kind === "under_review") throw new HttpError(409, `Buyurtma #${result.order!.id} bo'yicha chek tekshirilmoqda — avval uni ko'rib chiqing`);
+    if (result.kind === "paying") throw new HttpError(409, `Buyurtma #${result.order!.id} bo'yicha to'lov hozir jarayonda — birozdan keyin qayta urinib ko'ring`);
+    if (result.kind !== "ok") throw new HttpError(409, "Buyurtma ochilmadi");
+    const { order } = result;
+
+    const lang = await userLang(user);
+    const back = returnUrl((await botUsername(rt.api)) ?? undefined);
+    const clickUrl = clickEnabled() ? clickCheckoutUrl(order.id, order.amount, { returnUrl: back }) : null;
+    const paymeUrl = paymeEnabled() ? paymeCheckoutUrl(order.id, order.amount, { returnUrl: back, lang }) : null;
+    const buttons = [
+      clickUrl && [{ text: await translate(lang, "btn_pay_click"), url: clickUrl }],
+      paymeUrl && [{ text: await translate(lang, "btn_pay_payme"), url: paymeUrl }],
+    ].filter((b): b is { text: string; url: string }[] => !!b);
+
+    const text = await translate(lang, "admin_pay_link", {
+      ism: user.firstName ?? "",
+      mahsulot: await displayCourseName(product.title),
+      summa: formatSum(order.amount),
+      muddat: formatDateTime(order.expiresAt),
+    });
+    const sent = await notifyUser(rt.api, user, "order", text, { reply_markup: { inline_keyboard: buttons } });
+    await logActivity(
+      currentUser(req).id,
+      "SEND_PAY_LINK",
+      `To'lov havolasi ${sent ? "yuborildi" : "yetkazilmadi (bloklagan)"}: ${user.telegramId}, ${product.title}, ${formatSum(order.amount)}, buyurtma #${order.id}`,
+      clientIp(req),
+    );
+    res.json({ delivered: !!sent, orderId: order.id.toString(), amount: order.amount, expiresAt: order.expiresAt, clickUrl, paymeUrl });
   });
 
   return r;

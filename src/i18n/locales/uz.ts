@@ -66,6 +66,7 @@ export const uz = {
   payment_info_online: "🧾 <b>Buyurtma #{raqam}</b>\n\n📚 Darslik: {mahsulot}\n💰 Summa: <b>{summa}</b>",
   payment_step_online: "💳 Quyidagi tugma orqali Payme yoki Click ilovasida to'lang — to'lov avtomatik tasdiqlanadi va kurs darhol ochiladi.",
   payment_online_hint: "💳 Yoki Payme / Click orqali onlayn to'lang — chek yuborish shart emas, to'lov avtomatik tasdiqlanadi.",
+  admin_pay_link: "Assalomu alaykum, {ism}! Sizga <b>{mahsulot}</b> darsligi uchun to'lov havolasi yuborildi.\n\n💰 Summa: <b>{summa}</b>\n⏳ Havola {muddat} gacha amal qiladi.\n\nTo'lovdan keyin darslik avtomatik ochiladi. Quyidagi tugma orqali Click yoki Payme bilan to'lov qiling 👇",
   btn_pay_payme: "💳 Payme orqali to'lash",
   btn_pay_click: "💳 Click orqali to'lash",
   btn_copy_card: "📋 Karta raqamini nusxalash",

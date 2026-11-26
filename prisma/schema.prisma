@@ -220,6 +220,8 @@ model Order {
   productId         Int           @map("product_id")
   amount            Int
   discount          Int           @default(0)
+  // Narx admin paneldan qo'lda qo'yilgan («To'lov havolasi yuborish») — mahsulot narxi o'zgarsa ham o'zgarmaydi
+  customAmount      Boolean       @default(false) @map("custom_amount")
   promoId           Int?          @map("promo_id")
   cardId            Int?          @map("card_id")
   status            OrderStatus   @default(new)

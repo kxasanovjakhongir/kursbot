@@ -324,6 +324,21 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     expect(answers().at(-1)?.payload.show_alert).toBe(true);
   });
 
+  it("to'lov havolasi (start=tolov-<kod>): telefon so'raladi, keyin darhol to'lov oynasi", async () => {
+    await send(text("/start tolov-4b"));
+    expect(await prisma.order.count()).toBe(0);
+    await send(contact("+998901234567"));
+    const order = await prisma.order.findFirstOrThrow({ include: { product: true } });
+    expect(order.product.code).toBe("4b");
+    expect(order.status).toBe("new");
+    // Telefon bor odam — havola darhol to'lov oynasini ochadi, takror bosilsa yangi buyurtma yaratilmaydi
+    await send(text("/start tolov-4b"));
+    expect(await prisma.order.count()).toBe(1);
+    // Noto'g'ri kod — oddiy start (xato yo'q)
+    await send(text("/start tolov-yoq"));
+    expect(await prisma.order.count()).toBe(1);
+  });
+
   it("boshqa odamning buyurtmasini ko'rib/bekor qilib bo'lmaydi", async () => {
     const other: TgUser = { id: 5002, is_bot: false, first_name: "Vali" };
     await send(text("/start"), contact("+998901234567"), callback("buy:4b"));

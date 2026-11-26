@@ -21,6 +21,7 @@ import { trackEvent } from "../../services/events";
 import { crmCourseName, sendCourseToCrm, sendLeadToCrm } from "../../services/crm";
 import { displayCourseName, getSettings, getSupportPhone, getSupportUrl } from "../../services/settings";
 import { prisma } from "../../db";
+import { TtlMap } from "../../lib/ttlMap";
 
 export const customer = new Composer<BotContext>();
 const pm = customer.chatType("private");
@@ -107,7 +108,51 @@ async function findOwnOrder(ctx: BotContext, orderId: string): Promise<OrderWith
 }
 
 // ---------- 5.1. START va deep link ----------
+/**
+ * To'lov havolasi: t.me/<bot>?start=tolov-<kurs kodi>. Sotuvchi mijozga yuboradi — bot darhol Payme / Click
+ * tugmalari bor to'lov oynasini ochadi (buyurtma shu odamga bog'lanadi, to'lansa kanal avtomatik ochiladi).
+ */
+const PAY_LINK_RE = /^tolov-([A-Za-z0-9_]{1,32})$/;
+/** Telefon so'ralgan paytda qaysi kurs to'lovi kutilyapti (raqam yuborilgach to'lov oynasi ochiladi) */
+const pendingPurchase = new TtlMap<number, string>(60 * 60_000, 10_000);
+
+/** "Darslikni olaman": buyurtma (yoki ochiq turgani) va to'lov oynasi */
+async function startPurchase(ctx: BotContext, product: Product): Promise<void> {
+  const user = ctx.user!;
+  if (!user.phone) {
+    pendingPurchase.set(Number(user.telegramId), product.code);
+    return askPhone(ctx, product);
+  }
+
+  const own = await checkOwnership(user.id, product);
+  if (own.kind !== "none") return presentProduct(ctx, product);
+
+  const res = await createOrder(user.id, product, user.lastSource);
+  if (res.kind === "no_card" || res.kind === "no_price") {
+    await ctx.reply(await ctx.t("payment_unavailable"), { parse_mode: "HTML", reply_markup: await contactAdminKeyboard(ctx.lang) });
+    return;
+  }
+  if (res.kind === "created") {
+    await trackEvent(user.id, "order", { product: product.code, orderId: res.order.id.toString() });
+  }
+  await rememberPaymentScreen(Number(user.telegramId), res.order.id);
+  // To'lov ma'lumoti alohida xabar — bank ilovasiga o'tib-qaytganda chatda turadi
+  await renderNew(ctx, await paymentScreen(ctx, { ...res.order, product }));
+}
+
 pm.command("start", async (ctx) => {
+  const payLink = PAY_LINK_RE.exec(ctx.match?.trim() ?? "");
+  if (payLink) {
+    const product = await getActiveProduct(payLink[1].toLowerCase());
+    if (product) {
+      const user = await recordStart(ctx.user!, product.code, "tolov_link");
+      ctx.user = user;
+      await trackEvent(user.id, "start", { product: product.code, source: "tolov_link", link: null, campaign: null, method: null });
+      await setLastProduct(user, product.code);
+      if (user.phone) void sendCourseToCrm(user, product.title);
+      return startPurchase(ctx, product);
+    }
+  }
   // Kampaniya linki (c7k2m9x), eski format (4b_instagram) yoki parametrsiz — baza orqali aniqlanadi
   const entry = await resolveEntry(ctx.match);
   const product = entry.kind === "product" ? entry.product : null;
@@ -170,7 +215,9 @@ pm.on("message:contact", async (ctx) => {
     return;
   }
   await ctx.reply(await ctx.t("phone_saved"), { parse_mode: "HTML", reply_markup: mainMenu(ctx.lang, ctx.role) });
-  if (product) await presentProduct(ctx, product);
+  // To'lov havolasi orqali kelgan — darhol to'lov oynasi
+  if (product && pendingPurchase.take(ctx.from.id) === product.code) await startPurchase(ctx, product);
+  else if (product) await presentProduct(ctx, product);
   else await showCatalog(ctx);
 });
 
@@ -244,28 +291,12 @@ pm.callbackQuery(/^l:(\d{1,9})$/, async (ctx) => {
 
 // ---------- 5.4. "Darslikni olaman" ----------
 pm.callbackQuery(/^buy:([\w-]{1,32})$/, async (ctx) => {
-  const user = ctx.user!;
   const product = await getActiveProduct(ctx.match[1]);
   if (!product) {
     await ctx.answerCallbackQuery({ text: await ctx.t("error_not_found") });
     return showCatalog(ctx);
   }
-  if (!user.phone) return askPhone(ctx, product);
-
-  const own = await checkOwnership(user.id, product);
-  if (own.kind !== "none") return presentProduct(ctx, product);
-
-  const res = await createOrder(user.id, product, user.lastSource);
-  if (res.kind === "no_card" || res.kind === "no_price") {
-    await ctx.reply(await ctx.t("payment_unavailable"), { parse_mode: "HTML", reply_markup: await contactAdminKeyboard(ctx.lang) });
-    return;
-  }
-  if (res.kind === "created") {
-    await trackEvent(user.id, "order", { product: product.code, orderId: res.order.id.toString() });
-  }
-  await rememberPaymentScreen(ctx.from.id, res.order.id);
-  // To'lov ma'lumoti alohida xabar — bank ilovasiga o'tib-qaytganda chatda turadi
-  await renderNew(ctx, await paymentScreen(ctx, { ...res.order, product }));
+  await startPurchase(ctx, product);
 });
 
 pm.callbackQuery(new RegExp(`^pay:${ID_RE}$`), async (ctx) => {

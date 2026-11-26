@@ -774,7 +774,7 @@ describe.skipIf(!enabled)("admin API", () => {
       expect(order).toMatchObject({ amount: 1_500_000, customAmount: true, status: "new", source: "admin_link" });
       expect(Math.round((order.expiresAt.getTime() - Date.now()) / 86400_000)).toBe(5);
       const note = await prisma.notification.findFirstOrThrow({ where: { userId: user.id, kind: "order" } });
-      expect(note.text).toContain("Qonun qoidalar");
+      expect(note.text).toContain("<b>Qonun");
       expect(note.text).toContain("1 500 000");
 
       // Kurs narxi o'zgarsa ham admin qo'ygan summa o'zgarmaydi

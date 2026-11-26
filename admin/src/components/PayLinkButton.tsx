@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Copy, CreditCard } from "lucide-react";
+import { Copy, CreditCard, X } from "lucide-react";
 import { api, errorMessage } from "../lib/api";
-import { fmtDateTime, fmtSum } from "../lib/format";
+import { fmtDateTime, fmtSum, fullName } from "../lib/format";
 import { useToast } from "../context/ToastContext";
-import type { TelegramUserDetail } from "../lib/types";
+import type { Paged, TelegramUser } from "../lib/types";
 import { Button, Field, Input, Modal, Select } from "./ui";
 
 interface PayProduct {
@@ -21,16 +21,93 @@ interface PayLinkResult {
   paymeUrl: string | null;
 }
 
+type Person = Pick<TelegramUser, "id" | "firstName" | "lastName" | "username" | "phone" | "isBlocked">;
+
 const digits = (v: string) => v.replace(/\D/g, "");
 const groupThousands = (v: string) => digits(v).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+
+/** Kimga: ism, telefon, username yoki Telegram ID bo'yicha qidirib tanlash */
+function PersonPicker({ value, onChange }: { value: Person | null; onChange: (p: Person | null) => void }) {
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState<Person[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    // Telefon bo'shliq/qavs bilan yozilsa ham topilsin: "99 700-66-62" → "997006662"
+    const term = /^[\d\s()+-]+$/.test(q.trim()) ? q.replace(/[^\d]/g, "") : q.trim();
+    if (term.length < 2) {
+      setItems([]);
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      api
+        .get<Paged<Person>>("/telegram-users", { params: { q: term, pageSize: 8 } })
+        .then((r) => alive && setItems(r.data.items))
+        .catch(() => alive && setItems([]))
+        .finally(() => alive && setLoading(false));
+    }, 300);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [q]);
+
+  if (value) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+        <div className="min-w-0">
+          <div className="truncate font-medium text-gray-900">{fullName(value)}</div>
+          <div className="truncate text-xs text-gray-500">
+            {[value.phone, value.username && `@${value.username}`].filter(Boolean).join(" · ") || "—"}
+          </div>
+        </div>
+        <button type="button" className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700" onClick={() => onChange(null)} aria-label="Boshqa odamni tanlash">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ism, telefon yoki @username" autoFocus />
+      {q.trim().length >= 2 && (
+        <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-200">
+          {loading && items.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-gray-500">Qidirilmoqda…</div>
+          ) : items.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-gray-500">Topilmadi</div>
+          ) : (
+            items.map((u) => (
+              <button
+                type="button"
+                key={u.id}
+                className="block w-full border-b border-gray-100 px-3 py-2 text-left text-sm last:border-0 hover:bg-gray-50"
+                onClick={() => onChange(u)}
+              >
+                <span className="font-medium text-gray-900">{fullName(u)}</span>
+                <span className="ml-2 text-xs text-gray-500">
+                  {[u.phone, u.username && `@${u.username}`].filter(Boolean).join(" · ")}
+                  {u.isBlocked && " · botni bloklagan"}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * «To'lov havolasi»: kurs va narx tanlanadi — bot foydalanuvchiga shu summa bilan Click / Payme tugmalarini yuboradi.
  * To'lansa, buyurtma avtomatik tasdiqlanadi va kanal havolasi boradi.
  */
-export function PayLinkButton({ user, onSent }: { user: TelegramUserDetail; onSent: () => void }) {
+export function PayLinkButton({ user, onSent }: { user?: Person; onSent?: () => void }) {
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [person, setPerson] = useState<Person | null>(user ?? null);
   const [products, setProducts] = useState<PayProduct[]>([]);
   const [productId, setProductId] = useState<number | "">("");
   const [amount, setAmount] = useState("");
@@ -41,6 +118,7 @@ export function PayLinkButton({ user, onSent }: { user: TelegramUserDetail; onSe
   useEffect(() => {
     if (!open) return;
     setResult(null);
+    setPerson(user ?? null);
     api
       .get<{ items: PayProduct[] }>("/telegram-users/pay-products")
       .then((r) => {
@@ -62,16 +140,17 @@ export function PayLinkButton({ user, onSent }: { user: TelegramUserDetail; onSe
 
   const sum = Number(digits(amount));
   const dayNum = Number(days);
-  const valid = productId !== "" && sum >= 1000 && dayNum >= 1 && dayNum <= 30;
+  const valid = !!person && productId !== "" && sum >= 1000 && dayNum >= 1 && dayNum <= 30;
 
   const send = async () => {
+    if (!person) return;
     setBusy(true);
     try {
-      const r = await api.post<PayLinkResult>(`/telegram-users/${user.id}/pay-link`, { productId, amount: sum, days: dayNum });
+      const r = await api.post<PayLinkResult>(`/telegram-users/${person.id}/pay-link`, { productId, amount: sum, days: dayNum });
       setResult(r.data);
       if (r.data.delivered) toast.success("To'lov havolasi yuborildi");
       else toast.error("Yetkazilmadi: foydalanuvchi botni bloklagan. Havolani o'zingiz yuborishingiz mumkin");
-      onSent();
+      onSent?.();
     } catch (err) {
       toast.error(errorMessage(err));
     } finally {
@@ -136,6 +215,15 @@ export function PayLinkButton({ user, onSent }: { user: TelegramUserDetail; onSe
           </div>
         ) : (
           <div className="space-y-4">
+            <Field label="Kimga">
+              {user ? (
+                <div className="text-sm font-medium text-gray-900">
+                  {fullName(user)} {user.phone && <span className="font-normal text-gray-500">· {user.phone}</span>}
+                </div>
+              ) : (
+                <PersonPicker value={person} onChange={setPerson} />
+              )}
+            </Field>
             <Field label="Kurs">
               <Select value={productId} onChange={(e) => pick(Number(e.target.value))}>
                 {products.map((p) => (
@@ -152,7 +240,7 @@ export function PayLinkButton({ user, onSent }: { user: TelegramUserDetail; onSe
               <Input type="number" min={1} max={30} value={days} onChange={(e) => setDays(e.target.value)} />
             </Field>
             <p className="text-xs text-gray-500">
-              Bot {user.firstName ?? "foydalanuvchi"}ga «darslik uchun to'lov havolasi» xabarini Click va Payme tugmalari bilan yuboradi. To'lovdan keyin
+              Bot {person ? fullName(person) : "tanlangan odam"}ga «darslik uchun to'lov havolasi» xabarini Click va Payme tugmalari bilan yuboradi. To'lovdan keyin
               darslik avtomatik ochiladi.
             </p>
           </div>

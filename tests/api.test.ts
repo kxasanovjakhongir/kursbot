@@ -790,6 +790,7 @@ describe.skipIf(!enabled)("admin API", () => {
 
       // Sotib olgan bo'lsa — yuborilmaydi
       await prisma.order.update({ where: { id: order.id }, data: { status: "approved", paidAt: new Date() } });
+      await prisma.accessGrant.create({ data: { userId: user.id, productId: product.id, orderId: order.id } });
       expect((await request(app).post(`/api/telegram-users/${user.id}/pay-link`).set(auth).send({ productId: product.id, amount: 1_000_000 })).status).toBe(409);
     } finally {
       Object.assign(cfg, saved);

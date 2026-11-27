@@ -107,7 +107,7 @@ export interface UserStats {
 
 export async function userStats(userId: bigint): Promise<UserStats> {
   const [products, orders, paid] = await Promise.all([
-    prisma.accessGrant.count({ where: { userId, revokedAt: null } }),
+    prisma.accessGrant.count({ where: { userId, revokedAt: null, trial: false } }),
     prisma.order.count({ where: { userId } }),
     prisma.order.aggregate({ _sum: { amount: true }, where: { userId, status: { in: PAID_STATUSES } } }),
   ]);

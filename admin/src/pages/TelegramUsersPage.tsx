@@ -9,6 +9,7 @@ import { useAsync } from "../hooks/useAsync";
 import { useDebounced } from "../hooks/useDebounced";
 import { UserStatus } from "../components/UserStatus";
 import { PayLinkButton } from "../components/PayLinkButton";
+import { TrialButton } from "../components/TrialButton";
 import { AsyncView, Badge, Button, Card, EmptyState, Input, PageHeader, Pagination, Select, Table, Td, Th } from "../components/ui";
 
 type Status = "all" | "active" | "blocked" | "banned";
@@ -100,6 +101,7 @@ export default function TelegramUsersPage() {
         subtitle="Qaysi kurs, manba va kampaniyadan kelgani, ro'yxatdan o'tgani va xaridlari"
         action={
           <div className="flex flex-wrap gap-2" title="Joriy filtrlar bo'yicha yuklab olinadi">
+            <TrialButton />
             <PayLinkButton />
             {EXPORTS.map((e) => (
               <Button key={e.format} variant="secondary" size="sm" loading={exporting === e.format} disabled={exporting !== null} onClick={() => void runExport(e.format)}>

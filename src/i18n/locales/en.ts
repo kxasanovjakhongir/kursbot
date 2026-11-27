@@ -107,6 +107,8 @@ export const en: Messages = {
 
   access_expiring: "⏰ <b>{mahsulot}</b> — your channel access ends on <b>{sana}</b>. After that you will be removed from the channel automatically.",
   access_expired: "⌛️ <b>{mahsulot}</b> — your channel access has expired and you were removed from the channel.\n\nTo buy again, open «📚 Textbooks».",
+  trial_granted: "Hello, {ism}! You have <b>trial access</b> to the <b>{mahsulot}</b> textbook 🎁\n\n⏳ Access is valid until <b>{muddat}</b> — after that you will be removed from the channel automatically.\n\nJoin the private channel with the button below. The link is only for you 👇",
+  trial_expired: "⌛️ <b>{mahsulot}</b> — your trial has ended and you were removed from the channel.\n\nIf you liked the textbook, buy it with the button below — the channel reopens right after payment 👇",
   access_removed: "🚫 You were removed from the <b>{mahsulot}</b> channel. If you have questions, contact the admin.",
   access_extended: "✅ <b>{mahsulot}</b> — channel access extended until <b>{sana}</b>.",
   access_unlimited: "✅ <b>{mahsulot}</b> — channel access is now unlimited.",

@@ -8,6 +8,7 @@ import { useAsync } from "../hooks/useAsync";
 import { MessageTable } from "../components/MessageTable";
 import { UserActions } from "../components/UserActions";
 import { PayLinkButton } from "../components/PayLinkButton";
+import { TrialButton } from "../components/TrialButton";
 import { UserGrants } from "../components/UserGrants";
 import { UserStatus } from "../components/UserStatus";
 import { AsyncView, Badge, Card, CardHeader, EmptyState, PageHeader, Pagination, Table, Td, Th } from "../components/ui";
@@ -45,6 +46,7 @@ export default function TelegramUserDetailPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <UserStatus user={u} />
                   <PayLinkButton user={u} onSent={() => { user.reload(); messages.reload(); }} />
+                  <TrialButton user={u} onSent={() => { user.reload(); messages.reload(); }} />
                   <UserActions user={u} onChanged={() => { user.reload(); messages.reload(); }} />
                 </div>
               }

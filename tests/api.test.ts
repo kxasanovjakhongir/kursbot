@@ -10,6 +10,9 @@ import { invalidateSettings } from "../src/services/settings";
 import { errorSinkStream, flushErrorLogs } from "../src/lib/errorSink";
 import { config } from "../src/config";
 import { applyCurrentPrice, syncOpenOrderPrices } from "../src/services/orders";
+import { decideJoinRequest, grantAccess } from "../src/services/access";
+import { processExpiredGrants } from "../src/services/membership";
+import { checkOwnership } from "../src/services/products";
 
 const enabled = !!process.env.TEST_DATABASE_URL;
 
@@ -795,5 +798,55 @@ describe.skipIf(!enabled)("admin API", () => {
     } finally {
       Object.assign(cfg, saved);
     }
+  });
+
+  it("sinov uchun ochish: shaxsiy link, muddat tugasa chiqariladi, sotib olsa doimiy bo'ladi", async () => {
+    const auth = { Authorization: `Bearer ${adminToken}` };
+    const product = await prisma.product.create({ data: { code: "sinov4", title: "4 bosqich", price: 1_800_000, channelId: -1008n } });
+    const user = await prisma.user.create({ data: { telegramId: 7702n, firstName: "Aziz" } });
+    const url = `/api/telegram-users/${user.id}/trial`;
+
+    expect((await request(app).post(url).set(auth).send({ productId: product.id, days: 30 })).status).toBe(400);
+    const before = sent.length;
+    const res = await request(app).post(url).set(auth).send({ productId: product.id, days: 2 });
+    expect(res.status).toBe(200);
+    expect(res.body.delivered).toBe(true);
+    expect(sent.slice(before)).toEqual([7702]);
+    expect(res.body.links).toHaveLength(1);
+
+    const grant = await prisma.accessGrant.findFirstOrThrow({ where: { userId: user.id } });
+    expect(grant).toMatchObject({ trial: true, orderId: null, inviteLink: res.body.links[0].url });
+    expect(Math.round((grant.expiresAt!.getTime() - Date.now()) / 86400_000)).toBe(2);
+    expect(grant.expiryRemindedAt).not.toBeNull(); // 3 kunlik eslatma sinovga bormaydi
+    expect((await prisma.notification.findFirstOrThrow({ where: { userId: user.id, kind: "success" } })).text).toContain("sinov uchun");
+    // Sinov sotib olish hisoblanmaydi — mijoz shu paytda ham to'lay oladi
+    expect((await checkOwnership(user.id, product)).kind).toBe("none");
+
+    // Link faqat egasini kiritadi
+    expect((await decideJoinRequest(grant.inviteLink!, 9999n)).kind).toBe("decline");
+    expect((await decideJoinRequest(grant.inviteLink!, 7702n)).kind).toBe("approve");
+
+    // Qayta ochilsa — o'sha kirish, yangi muddat (ikkinchi yozuv yo'q)
+    await request(app).post(url).set(auth).send({ productId: product.id, days: 1 });
+    expect(await prisma.accessGrant.count({ where: { userId: user.id } })).toBe(1);
+
+    // Muddat tugadi: kanaldan chiqariladi va «Darslikni olaman» (to'lov) tugmasi boradi
+    await prisma.accessGrant.update({ where: { id: grant.id }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    kicked.length = 0;
+    await processExpiredGrants(fakeApi);
+    expect(kicked).toContain(7702);
+    expect((await prisma.accessGrant.findUniqueOrThrow({ where: { id: grant.id } })).revokeReason).toBe("expired");
+    expect((await prisma.notification.findFirstOrThrow({ where: { userId: user.id, kind: "warning" } })).text).toContain("sinov muddati tugadi");
+
+    // Yana sinov, keyin sotib oldi: o'sha kirish doimiyga aylanadi
+    await request(app).post(url).set(auth).send({ productId: product.id, days: 2 });
+    const trial = await prisma.accessGrant.findFirstOrThrow({ where: { userId: user.id, revokedAt: null } });
+    const order = await prisma.order.create({ data: { userId: user.id, productId: product.id, amount: 1_800_000, status: "approved", paidAt: new Date(), expiresAt: new Date() } });
+    const [paid] = await grantAccess(fakeApi, order, user.telegramId);
+    expect(paid.id).toBe(trial.id);
+    expect(paid).toMatchObject({ trial: false, orderId: order.id, expiresAt: null });
+    expect((await checkOwnership(user.id, product)).kind).toBe("owned");
+    expect((await request(app).post(url).set(auth).send({ productId: product.id, days: 2 })).status).toBe(409);
+    expect(await prisma.activityLog.count({ where: { action: "GRANT_TRIAL" } })).toBe(3);
   });
 });

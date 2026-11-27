@@ -100,6 +100,8 @@ export interface AccessGrant {
   expiresAt: string | null;
   revokedAt: string | null;
   revokeReason: GrantRevokeReason | null;
+  /** Sinov kirishi (admin «Sinov uchun ochish») — sotib olinmagan */
+  trial: boolean;
   createdAt: string;
   product: { title: string; channelId: string | null };
 }

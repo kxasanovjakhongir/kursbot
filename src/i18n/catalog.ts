@@ -165,6 +165,8 @@ export const TEXT_GROUPS: TextGroup[] = [
       access_expiring: { title: "Kirish muddati tugayapti" },
       access_expired: { title: "Kirish muddati tugadi" },
       access_removed: { title: "Kanaldan chiqarildi" },
+      trial_granted: { title: "Sinov uchun ochildi", vars: ["ism", "mahsulot", "muddat"], hint: "Admin panel → «Sinov uchun ochish». Ostida shaxsiy kanal havolasi tugmasi chiqadi" },
+      trial_expired: { title: "Sinov muddati tugadi", vars: ["mahsulot"], hint: "Ostida «Darslikni olaman» tugmasi — to'g'ridan-to'g'ri to'lov oynasiga" },
       access_extended: { title: "Kirish uzaytirildi" },
       access_unlimited: { title: "Kirish muddatsiz" },
       access_restored: { title: "Kirish tiklandi" },

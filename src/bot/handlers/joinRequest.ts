@@ -70,7 +70,7 @@ joinRequest.on("chat_join_request", async (ctx) => {
   const who = [escapeHtml(req.from.first_name), req.from.username ? `@${escapeHtml(req.from.username)}` : null, `<code>${req.from.id}</code>`]
     .filter(Boolean)
     .join(", ");
-  const owner = decision.grant ? ` Link egasi: buyurtma #${decision.grant.orderId}.` : "";
+  const owner = decision.grant ? ` Link egasi: ${decision.grant.orderId ? `buyurtma #${decision.grant.orderId}` : "sinov kirishi"}, ${decision.grant.user.telegramId}.` : "";
   await sendToAdminGroup(
     ctx.api,
     `🚫 Begona odam kanalga kirmoqchi bo'ldi — rad etildi.\nKanal: ${escapeHtml(product.title)}\nKim: ${who}\nSabab: ${REASON_LABEL[decision.reason]}.${owner}`,

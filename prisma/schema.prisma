@@ -325,7 +325,10 @@ model AccessGrant {
   id               BigInt             @id @default(autoincrement())
   userId           BigInt             @map("user_id")
   productId        Int                @map("product_id")
-  orderId          BigInt             @map("order_id")
+  // null = sinov kirishi (admin paneldan «Sinov uchun ochish»), buyurtmasiz
+  orderId          BigInt?            @map("order_id")
+  // Sinov kirishi: muddat tugasa kanaldan chiqariladi; sotib olinsa oddiy kirishga aylanadi
+  trial            Boolean            @default(false)
   inviteLink       String?            @unique @map("invite_link")
   linkExpiresAt    DateTime?          @map("link_expires_at") @db.Timestamptz
   joinedAt         DateTime?          @map("joined_at") @db.Timestamptz
@@ -341,7 +344,7 @@ model AccessGrant {
 
   user        User    @relation(fields: [userId], references: [id])
   product     Product @relation(fields: [productId], references: [id])
-  order       Order   @relation(fields: [orderId], references: [id])
+  order       Order?  @relation(fields: [orderId], references: [id])
   filesSentBy Admin?  @relation(fields: [filesSentById], references: [id])
 
   @@index([userId, productId])

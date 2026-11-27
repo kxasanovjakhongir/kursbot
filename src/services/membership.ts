@@ -2,7 +2,8 @@ import { GrammyError, type Api } from "grammy";
 import type { GrantRevokeReason, User } from "@prisma/client";
 import { prisma } from "../db";
 import { notifyUser } from "../bot/notify";
-import { translate, type TextKey } from "../i18n";
+import { label, translate, type TextKey } from "../i18n";
+import { botUsername } from "./botInfo";
 import { formatDate } from "../lib/format";
 import { displayCourseName } from "./settings";
 import { logger } from "../lib/logger";
@@ -70,9 +71,21 @@ export async function revokeGrant(api: Api, grant: GrantFull, reason: GrantRevok
     if (grant.inviteLink) await api.revokeChatInviteLink(Number(product.channelId), grant.inviteLink).catch(() => undefined);
   }
   await prisma.accessGrant.update({ where: { id: grant.id }, data: { revokedAt: new Date(), revokeReason: reason } });
-  if (opts.notify) {
-    await notify(api, user, reason === "expired" ? "access_expired" : "access_removed", { mahsulot: await displayCourseName(product.title) }, "warning");
-  }
+  if (!opts.notify) return;
+  const mahsulot = await displayCourseName(product.title);
+  if (grant.trial && reason === "expired") return notifyTrialEnded(api, user, product.code, mahsulot);
+  await notify(api, user, reason === "expired" ? "access_expired" : "access_removed", { mahsulot }, "warning");
+}
+
+/** Sinov tugadi: «Sotib olish» tugmasi to'g'ridan-to'g'ri to'lov oynasiga olib boradi (t.me/<bot>?start=tolov-<kurs>) */
+async function notifyTrialEnded(api: Api, user: User, code: string, mahsulot: string) {
+  if (user.isBanned) return;
+  const lang = await userLang(user);
+  const bot = await botUsername(api);
+  const reply_markup = bot ? { inline_keyboard: [[{ text: label(lang, "btn_buy"), url: `https://t.me/${bot}?start=tolov-${code}` }]] } : undefined;
+  await notifyUser(api, user, "warning", await translate(lang, "trial_expired", { mahsulot }), { reply_markup }).catch((err) =>
+    logger.warn({ err }, "sinov tugashi xabari yuborilmadi"),
+  );
 }
 
 export async function revokeGrantById(api: Api, grantId: bigint, reason: GrantRevokeReason): Promise<GrantFull | null> {

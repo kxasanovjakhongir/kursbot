@@ -3,7 +3,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../../db";
 import { notifyUser } from "../../bot/notify";
-import { translate } from "../../i18n";
+import { label, translate } from "../../i18n";
 import { logActivity } from "../../services/activity";
 import { banUser, KickFailedError, revokeGrantById, setGrantExpiry, unbanUser } from "../../services/membership";
 import { searchUsers, userLang, type UserFilter } from "../../services/users";
@@ -13,6 +13,7 @@ import { formatDate, formatDateTime, formatSum } from "../../lib/format";
 import { clickEnabled, paymeEnabled } from "../../config";
 import { botUsername } from "../../services/botInfo";
 import { createAdminPayOrder } from "../../services/orders";
+import { grantTrial } from "../../services/access";
 import { checkOwnership } from "../../services/products";
 import { displayCourseName } from "../../services/settings";
 import { clickCheckoutUrl } from "../../services/payments/click";
@@ -58,6 +59,13 @@ const expirySchema = z
   })
   .strict()
   .refine((b) => (b.expiresAt === undefined) !== (b.days === undefined), "expiresAt yoki days dan bittasini yuboring");
+
+const trialSchema = z
+  .object({
+    productId: z.number().int().positive(),
+    days: z.number().int().min(1, "Kamida 1 kun").max(7, "Sinov ko'pi bilan 7 kun"),
+  })
+  .strict();
 
 const payLinkSchema = z
   .object({
@@ -315,6 +323,38 @@ export function telegramUsersRouter(rt: BotRuntime): Router {
       clientIp(req),
     );
     res.json({ delivered: !!sent, orderId: order.id.toString(), amount: order.amount, expiresAt: order.expiresAt, clickUrl, paymeUrl });
+  });
+
+  // «Sinov uchun ochish»: o'ylab turgan mijozga 1–7 kunga kanal; link faqat shu odam uchun (qo'shilish so'rovi)
+  r.post("/:id/trial", async (req, res) => {
+    assertPermission(req, "users.manage");
+    const { productId, days } = parseBody(trialSchema, req);
+    const user = await findUser(parseBigId(req.params.id));
+    if (user.isBanned) throw new HttpError(409, "Foydalanuvchi cheklangan — avval cheklovni olib tashlang");
+    const product = await prisma.product.findFirst({ where: { id: productId, deletedAt: null } });
+    if (!product) throw new HttpError(404, "Kurs topilmadi");
+
+    const result = await grantTrial(rt.api, user, product, days);
+    if (result.kind === "owned") throw new HttpError(409, "Bu foydalanuvchi bu kursni allaqachon sotib olgan");
+    if (result.kind === "no_channel") throw new HttpError(409, "Bu kursga yopiq kanal ulanmagan");
+    const links = result.grants.filter((g) => g.inviteLink);
+    if (links.length === 0) throw new HttpError(502, "Kanal havolasi yaratilmadi — bot kanalda admin ekanini tekshiring");
+
+    const lang = await userLang(user);
+    const name = await displayCourseName(product.title);
+    const buttons =
+      links.length === 1
+        ? [[{ text: await translate(lang, "approved_button"), url: links[0].inviteLink! }]]
+        : await Promise.all(links.map(async (g) => [{ text: label(lang, "btn_join", { mahsulot: await displayCourseName(g.product.title) }), url: g.inviteLink! }]));
+    const text = await translate(lang, "trial_granted", { ism: user.firstName ?? "", mahsulot: name, muddat: formatDateTime(result.expiresAt) });
+    const sent = await notifyUser(rt.api, user, "success", text, { reply_markup: { inline_keyboard: buttons } });
+    await logActivity(
+      currentUser(req).id,
+      "GRANT_TRIAL",
+      `Sinov uchun ochildi${sent ? "" : " (xabar yetkazilmadi)"}: ${user.telegramId}, ${product.title}, ${days} kun, ${formatDateTime(result.expiresAt)} gacha`,
+      clientIp(req),
+    );
+    res.json({ delivered: !!sent, expiresAt: result.expiresAt, links: links.map((g) => ({ title: g.product.title, url: g.inviteLink })) });
   });
 
   return r;

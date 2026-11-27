@@ -119,6 +119,8 @@ export const uz = {
   // ---------- Kanalga kirish ----------
   access_expiring: "⏰ <b>{mahsulot}</b> — kanalga kirish muddati <b>{sana}</b> da tugaydi. Shundan keyin kanaldan avtomatik chiqarilasiz.",
   access_expired: "⌛️ <b>{mahsulot}</b> — kanalga kirish muddati tugadi va siz kanaldan chiqarildingiz.\n\nQayta olish uchun «📚 Darsliklar» bo'limiga o'ting.",
+  trial_granted: "Assalomu alaykum, {ism}! Sizga <b>{mahsulot}</b> darsligi <b>sinov uchun</b> ochildi 🎁\n\n⏳ Kirish <b>{muddat}</b> gacha amal qiladi — shundan keyin kanaldan avtomatik chiqarilasiz.\n\nQuyidagi tugma orqali yopiq kanalga qo'shiling. Havola faqat siz uchun 👇",
+  trial_expired: "⌛️ <b>{mahsulot}</b> — sinov muddati tugadi va siz kanaldan chiqarildingiz.\n\nDarslik yoqqan bo'lsa, quyidagi tugma orqali sotib oling — to'lovdan keyin kanal darhol qayta ochiladi 👇",
   access_removed: "🚫 Siz <b>{mahsulot}</b> kanalidan chiqarildingiz. Savollar bo'lsa, admin bilan bog'laning.",
   access_extended: "✅ <b>{mahsulot}</b> — kanalga kirish <b>{sana}</b> gacha uzaytirildi.",
   access_unlimited: "✅ <b>{mahsulot}</b> — kanalga kirish endi muddatsiz.",

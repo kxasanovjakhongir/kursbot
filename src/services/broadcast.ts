@@ -74,7 +74,7 @@ async function resolveRecipientIds({ audience, recipients, productId }: Audience
       return idsOf({ ...mass, orders: { none: { status: { in: PAID_STATUSES } } } });
     case "product":
       if (!productId) throw new BroadcastInputError("Mahsulot tanlanmagan");
-      return idsOf({ ...mass, grants: { some: { productId, revokedAt: null } } });
+      return idsOf({ ...mass, grants: { some: { productId, revokedAt: null, trial: false } } });
     case "admins": {
       const admins = await prisma.admin.findMany({ where: { isActive: true }, select: { telegramId: true } });
       return idsOf({ ...base, telegramId: { in: admins.map((a) => a.telegramId) } });

@@ -45,7 +45,8 @@ export async function componentProducts(product: Product): Promise<Product[]> {
 /** Foydalanuvchida faol kirish bor mahsulot IDlari */
 export async function ownedProductIds(userId: bigint): Promise<Set<number>> {
   const grants = await prisma.accessGrant.findMany({
-    where: { userId, revokedAt: null },
+    // Sinov kirishi sotib olish hisoblanmaydi: mijoz sinov paytida ham sotib ola oladi
+    where: { userId, revokedAt: null, trial: false },
     select: { productId: true },
   });
   return new Set(grants.map((g) => g.productId));

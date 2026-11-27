@@ -78,7 +78,10 @@ export function UserGrants({ user, onChanged }: { user: TelegramUserDetail; onCh
           <li key={g.id} className="py-3 first:pt-0 last:pb-0">
             <div className="flex items-center justify-between gap-2">
               <span className={`text-sm font-medium ${g.revokedAt ? "text-gray-400" : "text-gray-900"}`}>{g.product.title}</span>
-              {status(g)}
+              <span className="flex shrink-0 gap-1">
+                {g.trial && <Badge tone="blue">Sinov</Badge>}
+                {status(g)}
+              </span>
             </div>
             <p className="mt-1 text-xs text-gray-500">
               {g.revokedAt

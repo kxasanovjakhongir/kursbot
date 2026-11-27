@@ -6,7 +6,7 @@ import { useToast } from "../context/ToastContext";
 import type { Paged, TelegramUser } from "../lib/types";
 import { Button, Field, Input, Modal, Select } from "./ui";
 
-interface PayProduct {
+export interface PayProduct {
   id: number;
   title: string;
   price: number;
@@ -21,13 +21,13 @@ interface PayLinkResult {
   paymeUrl: string | null;
 }
 
-type Person = Pick<TelegramUser, "id" | "firstName" | "lastName" | "username" | "phone" | "isBlocked">;
+export type Person = Pick<TelegramUser, "id" | "firstName" | "lastName" | "username" | "phone" | "isBlocked">;
 
 const digits = (v: string) => v.replace(/\D/g, "");
 const groupThousands = (v: string) => digits(v).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 
 /** Kimga: ism, telefon, username yoki Telegram ID bo'yicha qidirib tanlash */
-function PersonPicker({ value, onChange }: { value: Person | null; onChange: (p: Person | null) => void }) {
+export function PersonPicker({ value, onChange }: { value: Person | null; onChange: (p: Person | null) => void }) {
   const [q, setQ] = useState("");
   const [items, setItems] = useState<Person[]>([]);
   const [loading, setLoading] = useState(false);

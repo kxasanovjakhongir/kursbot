@@ -8,7 +8,7 @@ import { createApp } from "../src/api/app";
 import { createBot } from "../src/bot/bot";
 import type { BotContext } from "../src/bot/context";
 import { resolveEntry } from "../src/services/campaignLinks";
-import { detectPlatform, isPrefetch, pickMethod, servesOpenPage } from "../src/api/trackingRedirect";
+import { detectPlatform, isPhoneVisitor, isPrefetch } from "../src/api/trackingRedirect";
 import { createPanelUser } from "../src/services/panelUsers";
 import { addCard } from "../src/services/cards";
 import { invalidateSettings } from "../src/services/settings";
@@ -240,17 +240,15 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
   });
 
   it("tracking redirect /l/<kod>: bosish yoziladi, faqat botga yo'naltiriladi; noto'g'ri kod — oddiy bot", async () => {
-    // Telefon (brauzer nomidan qat'i nazar) — tugmasiz sahifa, Telegram kod + usul belgisi bilan avtomatik ochiladi
+    // Telefon (Instagram ichki brauzeri ham) — oraliq sahifasiz oddiy 302: bosish bilan bitta o'tish, Telegram kod bilan ochiladi
     const iab = await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)");
-    expect(iab.status).toBe(200);
-    const iosUrls = [`"tg://resolve?domain=test_bot&start=${link.code}-m1"`, `"https://t.me/test_bot?start=${link.code}-m2"`];
-    expect(iosUrls.some((u) => iab.text.includes(u))).toBe(true);
-    expect(iab.text).toContain(`https://t.me/test_bot?start=${link.code}-m9`); // zaxira havola
-    expect(iab.text).not.toContain("<button");
-    // Yashirin (oldindan) yuklashda emas — sahifa ko'ringanda ochiladi; xotiradan qayta ko'rsatilsa ham
-    expect(iab.text).toContain("visibilitychange");
-    expect(iab.text).toContain("pageshow");
-    expect(iab.headers["content-security-policy"]).toMatch(/script-src 'nonce-/);
+    expect(iab.status).toBe(302);
+    expect(iab.headers.location).toBe(`https://t.me/test_bot?start=${link.code}-m4`);
+    const android = await request(app)
+      .get(`/l/${link.code}`)
+      .set("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Chrome/158.0 Mobile Safari/537.36 Instagram 457.0.0.55.73 Android");
+    expect(android.status).toBe(302);
+    expect(android.headers.location).toBe(`https://t.me/test_bot?start=${link.code}-m4`);
     await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)"); // o'sha odam — unique emas
     // Kompyuter va Meta roboti — oddiy 302
     const res = await request(app).get(`/l/${link.code.toUpperCase()}`).set("User-Agent", "facebookexternalhit/1.1");
@@ -258,8 +256,8 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     expect(res.headers.location).toBe(`https://t.me/test_bot?start=${link.code}`);
     await new Promise((r) => setTimeout(r, 50));
     const clicks = await prisma.linkClick.findMany({ where: { linkId: link.id } });
-    expect(clicks).toHaveLength(3);
-    expect(new Set(clicks.map((c) => c.visitorHash)).size).toBe(2);
+    expect(clicks).toHaveLength(4);
+    expect(new Set(clicks.map((c) => c.visitorHash)).size).toBe(3);
     expect(clicks[0].visitorHash).toMatch(/^[0-9a-f]{32}$/); // IP saqlanmaydi
 
     for (const bad of ["yoq-kod", "..%2F..%2Fetc", "https%3A%2F%2Fevil.com"]) {
@@ -394,14 +392,12 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
       "Mozilla/5.0 (iPhone; CPU iPhone OS 26_6_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/23G90 Instagram 400.0.0 (iPhone13,4; iOS 26_6_2)",
       "Mozilla/5.0 (Linux; Android 11; CUBOT P50) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36",
     ];
-    for (const ua of phones) expect(servesOpenPage(ua)).toBe(true);
+    for (const ua of phones) expect(isPhoneVisitor(ua)).toBe(true);
     for (const ua of ["facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)", "TelegramBot (like TwitterBot)", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0 Safari/537.36", ""]) {
-      expect(servesOpenPage(ua)).toBe(false);
+      expect(isPhoneVisitor(ua)).toBe(false);
     }
     expect(detectPlatform(phones[0])).toBe("android");
     expect(detectPlatform(phones[3])).toBe("ios");
-    expect([pickMethod("ios", () => 0), pickMethod("ios", () => 0.99)]).toEqual([1, 2]);
-    expect([pickMethod("android", () => 0), pickMethod("android", () => 0.5), pickMethod("android", () => 0.99)]).toEqual([3, 1, 2]);
     // Oldindan yuklash — bosish emas
     expect(isPrefetch({ "sec-purpose": "prefetch" })).toBe(true);
     expect(isPrefetch({ purpose: "prefetch" })).toBe(true);
@@ -411,13 +407,13 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
 
   it("usul belgisi: /start <kod>-m<N> — o'sha darslik, link kirishi va ochish usuli yoziladi", async () => {
     const user = await prisma.user.create({ data: { telegramId: 7012n, firstName: "Usul", phone: "+998901112299" } });
-    await bot.handleUpdate(start(`${link.code}-m2`, { id: 7012, first_name: "Usul" }));
+    await bot.handleUpdate(start(`${link.code}-m4`, { id: 7012, first_name: "Usul" }));
     expect(texts().join("\n")).toContain("Frontend Development");
     expect(texts().join("\n")).not.toContain("eskirgan");
     const u = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     expect(u).toMatchObject({ lastLinkId: link.id, lastProduct: "fe" });
     const ev = await prisma.event.findFirstOrThrow({ where: { userId: user.id, name: "start" } });
-    expect(ev.payload).toMatchObject({ link: link.code, method: 2 });
+    expect(ev.payload).toMatchObject({ link: link.code, method: 4 });
     // Noma'lum kod + belgi — eskirgan havola
     await bot.handleUpdate(start("yoqkod-m1", { id: 7012, first_name: "Usul" }));
     expect(texts().join("\n")).toContain("noto'g'ri yoki eskirgan");

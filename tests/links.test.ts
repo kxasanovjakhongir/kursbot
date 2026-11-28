@@ -294,7 +294,7 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     const res = await request(app).get(`/api/analytics?from=${from}&to=${to}`).set(admin);
     expect(res.status).toBe(200);
     expect(res.body.totals).toMatchObject({ purchases: 1, buyers: 1, revenue: 900_000 });
-    expect(res.body.funnel.clicks).toBe(2);
+    expect(res.body.funnel.clicks).toBe(3); // tracking testidagi 3 ta turli tashrifchi
     expect(res.body.funnel.started).toBeGreaterThanOrEqual(3);
     expect(res.body.series).toHaveLength(3); // ±24 soat = kecha, bugun, ertaga (Toshkent kunlari; bo'sh kun — 0)
     expect(res.body.series.reduce((a: number, d: { revenue: number }) => a + d.revenue, 0)).toBe(900_000);

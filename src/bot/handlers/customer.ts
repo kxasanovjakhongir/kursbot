@@ -174,9 +174,12 @@ pm.command("start", async (ctx) => {
   if (entry.kind === "unavailable") await ctx.reply(await ctx.t("link_unavailable"), { parse_mode: "HTML" });
 
   if (!user.phone) {
-    // Takroriy /start da (allaqachon bo'sh) bazaga yozilmaydi
-    if (user.lastProduct !== null) ctx.user = await prisma.user.update({ where: { id: user.id }, data: { lastProduct: null } });
-    await askPhone(ctx, null);
+    // Reklamadan kelib (/start <kod>) raqam bermagan odam keyin oddiy /start bossa (Telegram ko'pincha 1–2 soniyada
+    // ikkinchi bo'sh /start yuboradi) — kurs eslab qolinadi: raqam yuborilishi bilan o'sha kurs videosi ketadi.
+    // Ilgari bu yerda kurs o'chirilardi va odam video o'rniga katalog olardi.
+    const pending = entry.kind === "unavailable" ? null : await getActiveProduct(user.lastProduct);
+    if (!pending && user.lastProduct !== null) ctx.user = await prisma.user.update({ where: { id: user.id }, data: { lastProduct: null } });
+    await askPhone(ctx, pending);
     return;
   }
   const reply_markup = mainMenu(ctx.lang, ctx.role);

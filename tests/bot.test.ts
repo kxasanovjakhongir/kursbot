@@ -324,6 +324,15 @@ describe.skipIf(!enabled)("bot oqimlari (integratsion)", () => {
     expect(answers().at(-1)?.payload.show_alert).toBe(true);
   });
 
+  it("reklamadan kelgan odam: ortidan bo'sh /start kelsa ham raqamdan keyin o'sha kurs ko'rsatiladi", async () => {
+    await send(text("/start qd"), text("/start"));
+    expect(textOf(lastScreen())).toContain("Qoidalar");
+    calls = [];
+    await send(contact("+998901234567"));
+    expect(hasButton(lastScreen(), "p:4b")).toBe(false);
+    expect(await prisma.event.count({ where: { name: "product_view", payload: { path: ["product"], equals: "qd" } } })).toBe(1);
+  });
+
   it("to'lov havolasi (start=tolov-<kod>): telefon so'raladi, keyin darhol to'lov oynasi", async () => {
     await send(text("/start tolov-4b"));
     expect(await prisma.order.count()).toBe(0);

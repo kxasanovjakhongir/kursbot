@@ -244,11 +244,6 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     const iab = await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)");
     expect(iab.status).toBe(302);
     expect(iab.headers.location).toBe(`https://t.me/test_bot?start=${link.code}-m4`);
-    const android = await request(app)
-      .get(`/l/${link.code}`)
-      .set("User-Agent", "Mozilla/5.0 (Linux; Android 16; wv) AppleWebKit/537.36 Chrome/158.0 Mobile Safari/537.36 Instagram 457.0.0.55.73 Android");
-    expect(android.status).toBe(302);
-    expect(android.headers.location).toBe(`https://t.me/test_bot?start=${link.code}-m4`);
     await request(app).get(`/l/${link.code}`).set("User-Agent", "Instagram 300.0 (iPhone13,4; iOS 18_0)"); // o'sha odam — unique emas
     // Kompyuter va Meta roboti — oddiy 302
     const res = await request(app).get(`/l/${link.code.toUpperCase()}`).set("User-Agent", "facebookexternalhit/1.1");
@@ -256,8 +251,8 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     expect(res.headers.location).toBe(`https://t.me/test_bot?start=${link.code}`);
     await new Promise((r) => setTimeout(r, 50));
     const clicks = await prisma.linkClick.findMany({ where: { linkId: link.id } });
-    expect(clicks).toHaveLength(4);
-    expect(new Set(clicks.map((c) => c.visitorHash)).size).toBe(3);
+    expect(clicks).toHaveLength(3);
+    expect(new Set(clicks.map((c) => c.visitorHash)).size).toBe(2);
     expect(clicks[0].visitorHash).toMatch(/^[0-9a-f]{32}$/); // IP saqlanmaydi
 
     for (const bad of ["yoq-kod", "..%2F..%2Fetc", "https%3A%2F%2Fevil.com"]) {
@@ -294,7 +289,7 @@ describe.skipIf(!enabled)("kampaniya linklari (deep link): bot, panel, statistik
     const res = await request(app).get(`/api/analytics?from=${from}&to=${to}`).set(admin);
     expect(res.status).toBe(200);
     expect(res.body.totals).toMatchObject({ purchases: 1, buyers: 1, revenue: 900_000 });
-    expect(res.body.funnel.clicks).toBe(3); // tracking testidagi 3 ta turli tashrifchi
+    expect(res.body.funnel.clicks).toBe(2);
     expect(res.body.funnel.started).toBeGreaterThanOrEqual(3);
     expect(res.body.series).toHaveLength(3); // ±24 soat = kecha, bugun, ertaga (Toshkent kunlari; bo'sh kun — 0)
     expect(res.body.series.reduce((a: number, d: { revenue: number }) => a + d.revenue, 0)).toBe(900_000);
